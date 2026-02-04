@@ -1,0 +1,109 @@
+### Setting Up Designer, PM, Dev, Test, and OPS Agents in OpenCode
+
+OpenCode doesn't have predefined agents exactly named "Designer," "PM" (Product Manager), "Dev" (Developer), "Test" (Tester), or "OPS" (Operations/DevOps), but it fully supports creating custom agents for these roles. This is done through configuration files or an interactive wizard, allowing you to specialize agents for software development lifecycle (SDLC) workflows. Agents can be primary (main interactors) or subagents (specialized helpers invoked via `@mention` or automatically).
+
+Agents leverage models (local or hosted) and tools (e.g., file edit, bash, skill loading). For multi-agent setups—where a PM agent plans, a Designer refines, a Dev implements, etc.—use a primary orchestrator to delegate to subagents. Skills are reusable instruction modules that any agent can load on-demand to enhance their capabilities (e.g., a "UI-prototype" skill for the Designer).
+
+Below, I'll walk through the steps to set this up, based on OpenCode's official docs and community templates. Assume you've installed OpenCode (via `curl -fsSL https://opencode.ai/install | bash`). All configs go in `~/.config/opencode/` (global) or `.opencode/` (project-specific) directories.
+
+#### Step 1: Create Custom Agents
+Use the interactive wizard for quick setup:
+```
+opencode agent create
+```
+- It prompts for: scope (global/project), description, system prompt, tools.
+- This generates a markdown file in `agents/<name>.md`.
+
+Alternatively, manually create markdown files in `~/.config/opencode/agents/` or `.opencode/agents/`. The filename becomes the agent name (e.g., `pm.md`). Each file starts with YAML frontmatter for config, followed by the system prompt.
+
+Here's how to define each role as a subagent (pair with a primary like the built-in "Build" or a custom orchestrator). Adjust models (e.g., "glm-4.7-free" for free options) and tools based on needs—e.g., enable "bash" for OPS but restrict for PM.
+
+| Agent Role | Description | Example Config File (`<role>.md`) |
+|------------|-------------|-----------------------------------|
+| **PM (Product Manager)** | Handles requirements gathering, planning, and prioritization. Read-only; focuses on high-level strategy without code changes. | ```<br>---<br>description: Gathers requirements and creates project plans<br>mode: subagent<br>model: glm-4.7-free<br>tools:<br>  write: false<br>  edit: false<br>  bash: false<br>---<br>You are a Product Manager. Break down user requests into features, prioritize tasks, and create roadmaps. Output structured plans (e.g., user stories, milestones). Invoke other agents for implementation.<br>``` |
+| **Designer** | Focuses on UI/UX design, wireframing, and prototypes. Limited write access for mockups. | ```<br>---<br>description: Designs UI/UX and creates prototypes<br>mode: subagent<br>model: grok-code-fast-1<br>tools:<br>  write: true  # For creating design files<br>  edit: false<br>  bash: false<br>---<br>You are a UI/UX Designer. Analyze requirements for user flows, suggest designs, and generate wireframes or HTML/CSS prototypes. Use skills like 'ui-prototype' if available.<br>``` |
+| **Dev (Developer)** | Implements code based on plans. Full tool access for writing/editing. | ```<br>---<br>description: Implements and codes features<br>mode: subagent<br>model: qwen3-coder:32b  # Local model example<br>tools:<br>  write: true<br>  edit: true<br>  bash: true<br>---<br>You are a Developer. Follow plans to write clean, efficient code. Run tests, handle dependencies, and commit changes via git.<br>``` |
+| **Test (Tester)** | Runs tests, debugs, and verifies quality. Read/write for test files; bash for running scripts. | ```<br>---<br>description: Tests code for bugs and quality<br>mode: subagent<br>model: minimax-m2.1-free<br>tools:<br>  write: true  # For test files<br>  edit: false<br>  bash: true   # For running tests<br>---<br>You are a Tester. Create unit/integration tests, debug issues, and ensure code meets specs. Report failures with fixes.<br>``` |
+| **OPS (Operations/DevOps)** | Manages deployment, infrastructure, and monitoring. Heavy bash/tool use. | ```<br>---<br>description: Handles deployment and operations<br>mode: subagent<br>model: glm-4.7-free<br>tools:<br>  write: true<br>  edit: true<br>  bash: true<br>---<br>You are an Operations engineer. Set up CI/CD, deploy to cloud, monitor systems, and automate scripts. Use Docker/Kubernetes as needed.<br>``` |
+
+- **Permissions**: For safety, set granular controls in `opencode.json` (e.g., `"bash": {"docker *": "ask"}` to prompt before running Docker commands).
+- **Modes**: Set to `subagent` for delegation; use `primary` if you want to switch to it directly (via Tab key).
+- **Tools**: Common ones include `write` (new files), `edit` (modify files), `bash` (shell commands), `skill` (load skills). Disable risky ones for planning roles.
+- **Models**: Use free ones like GLM-4.7-free or locals via Ollama (e.g., Qwen3-Coder-32B). Override per-agent.
+
+After creating, restart OpenCode or run `opencode` in your project—they'll auto-load.
+
+#### Step 2: Define Skills for Agents
+Skills are reusable "knowledge packs" that agents load dynamically via the `skill` tool. They're not tied to one agent but enhance any (e.g., a "ci-cd-setup" skill for OPS).
+
+- **Create a Skill**: Make a folder in `.opencode/skills/<skill-name>/` (project) or `~/.config/opencode/skills/<skill-name>/` (global). Add `SKILL.md` with YAML frontmatter.
+  
+  Example for a "ui-prototype" skill (useful for Designer):
+  ```
+  ---
+  name: ui-prototype
+  description: Guides prototyping UI components with HTML/CSS/JS
+  ---
+  # UI Prototype Skill
+  Steps:
+  1. Analyze design requirements.
+  2. Generate wireframe sketches in text.
+  3. Output HTML/CSS code for prototypes.
+  4. Suggest improvements for accessibility.
+  ```
+
+  Another for "test-automation" (for Test):
+  ```
+  ---
+  name: test-automation
+  description: Automates unit and integration tests
+  ---
+  # Test Automation Skill
+  Use frameworks like Jest/Pytest. Steps:
+  1. Identify testable functions.
+  2. Write test cases for happy/error paths.
+  3. Run tests via bash and report coverage.
+  ```
+
+- **Discovery & Loading**: Agents see available skills in their tool description. They call `skill({ name: "ui-prototype" })` to load instructions. Control access in `opencode.json` (e.g., `"skill": {"test-*": "allow"}`).
+- **Permissions**: Set "ask" for sensitive skills to prompt user approval.
+- **Best Practices**: Keep skills focused (1-2 pages). They work across tools like Claude Code for portability.
+
+#### Step 3: Set Up Multi-Agent Workflows
+To chain these agents (e.g., PM plans → Designer refines → Dev builds → Test verifies → OPS deploys):
+- Use a **primary orchestrator** agent to delegate. Create one like this (`orchestrator.md`):
+  ```
+  ---
+  description: Coordinates SDLC agents
+  mode: primary
+  model: grok-code-fast-1
+  task: "*"  # Allows invoking any subagent
+  ---
+  You are an Orchestrator. Delegate tasks:
+  - Planning: @pm
+  - Design: @designer
+  - Implementation: @dev
+  - Testing: @test
+  - Deployment: @ops
+  Synthesize results into a final output.
+  ```
+
+- **Invocation**:
+  - Manual: In OpenCode session, type `@pm Plan a login feature`.
+  - Automatic: Primary agents use the "Task" tool to call subagents programmatically.
+  - Navigation: Use keybinds (e.g., <Leader>+Left/Right) to switch between sessions.
+
+- **Community Template for Multi-Agent**: For a ready-made setup, use the [opencode-agents GitHub template](https://github.com/wildwasser/opencode-agents). It includes:
+  - Orchestrator (Oscar) → Planner (Scout) → Implementor (Ivan) → Reviewer (Jester).
+  - Adapt it: Clone the repo, run `./install.sh`, then customize prompts in `~/.config/opencode/agents/*.md` to match your roles (e.g., rename Scout to PM, add Designer as a new subagent).
+  - Add your skills to `.opencode/skills/`.
+  - Example flow: `@oscar Add a dashboard` → Delegates to Scout (plan) → Ivan (dev) → Jester (test/review).
+
+#### Tips for Performance and Usage
+- **Hybrid Models**: Use free hosted (e.g., GLM-4.7-free for planning) + locals (e.g., 32B Qwen3-Coder for dev) to balance speed/privacy.
+- **Permissions & Safety**: Always set "ask" for bash/edit in non-dev roles to avoid accidental changes.
+- **Testing Workflow**: Start small—e.g., `@pm Plan a simple app`—then build up.
+- **Troubleshooting**: If agents don't load, check unique names, valid YAML, and run `opencode` in a git repo. For 32B locals, ensure 24+ GB VRAM.
+- **Extensions**: Integrate with MCP servers for external tools or Mem0 for memory.
+
+This setup turns OpenCode into a full SDLC team. If you provide more details (e.g., your project type or hardware), I can refine examples!
