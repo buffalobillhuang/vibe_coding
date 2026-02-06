@@ -1,0 +1,243 @@
+(base) billhuang@bh-m1-max ~ % npm install -g @fission-ai/openspec@latest
+
+added 79 packages in 5s
+
+25 packages are looking for funding
+  run `npm fund` for details
+
+(base) billhuang@bh-m1-max ~ % cd SRC/vibe_coding 
+
+
+(base) billhuang@bh-m1-max vibe_coding % vi openspec_tips.txt
+
+(base) billhuang@bh-m1-max vibe_coding % openspec --version
+1.1.1
+
+
+(base) billhuang@bh-m1-max vibe_coding % more openspec_tips.txt 
+npm install -g @fission-ai/openspec@latest
+
+cd your-project
+openspec init
+
+# workflow if you know what to build:
+/opsx:new ──► /opsx:ff ──► /opsx:apply ──► /opsx:verify ──► /opsx:archive
+
+You: /opsx:new add-dark-mode
+AI:  Created openspec/changes/add-dark-mode/
+     Ready to create: proposal
+
+You: /opsx:ff
+AI:  Creating artifacts for add-dark-mode...
+     ✓ proposal.md — why we're doing this, what's changing
+     ✓ specs/       — requirements and scenarios
+     ✓ design.md    — technical approach
+     ✓ tasks.md     — implementation checklist
+     Ready for implementation!
+
+You: /opsx:apply
+AI:  Working through tasks...
+     ✓ 1.1 Created ThemeContext with light/dark state
+
+
+mkdir sdd_openspec
+cd sdd_openspec
+
+(base) billhuang@bh-m1-max sdd_openspec % ls 
+feature.jpg		SDD产品实践.pdf
+openspec_tips.txt	spec_fields.jpg
+
+(base) billhuang@bh-m1-max sdd_openspec % mkdir templates       
+(base) billhuang@bh-m1-max sdd_openspec % cd templates 
+(base) billhuang@bh-m1-max templates % vi requirement-template.md
+enter 10 fields
+
+
+
+(base) billhuang@bh-m1-max templates % cd ..
+(base) billhuang@bh-m1-max sdd_openspec % ls
+feature.jpg		SDD产品实践.pdf		templates
+openspec_tips.txt	spec_fields.jpg
+
+(base) billhuang@bh-m1-max sdd_openspec % mkdir weather-report  
+
+(base) billhuang@bh-m1-max sdd_openspec % cd weather-report 
+
+(base) billhuang@bh-m1-max weather-report % openspec init
+Note: OpenSpec collects anonymous usage stats. Opt out: OPENSPEC_TELEMETRY=0
+✔ Select tools to set up (22 available) Cursor, Claude Code, OpenCode, GitHub 
+Copilot, Antigravity
+▌ OpenSpec structure created
+✔ Setup complete for Cursor
+✔ Setup complete for Claude Code
+✔ Setup complete for OpenCode
+✔ Setup complete for GitHub Copilot
+✔ Setup complete for Antigravity
+
+OpenSpec Setup Complete
+
+Created: Cursor, Claude Code, OpenCode, GitHub Copilot, Antigravity
+10 skills and 10 commands in .cursor, .claude, .opencode, .github, .agent/
+Config: openspec/config.yaml (schema: spec-driven)
+
+Getting started:
+  /opsx:new       Start a new change
+  /opsx:continue  Create the next artifact
+  /opsx:apply     Implement tasks
+
+Learn more: https://github.com/Fission-AI/OpenSpec
+Feedback:   https://github.com/Fission-AI/OpenSpec/issues
+
+Restart your IDE for slash commands to take effect.
+
+
+in IDE (cursor, or the like);
+/opsx-new 用户自选城市天气报告
+继续
+。。。
+请用中文书写所有文档，也将中文的要求放进 
+requirement-template.md
+。。。
+继续
+。。。
+
+我想加一个feature
+
+AI：很好，我们可以继续加。
+需要先明确两件事：
+1. 你想加的 feature 是什么？
+用一两句话中文描述一下：
+面向什么用户场景？
+大概想实现什么能力？（比如：多城市对比、收藏城市、切换摄氏/华氏、小时级预报等）
+2. 这个 feature 希望怎么管理？
+A. 作为当前变更 user-city-weather-report 的补充
+B. 新开一个独立的变更（新的 OpenSpec change）
+你可以直接回复类似：
+> “A，多城市对比城市天气，让用户可以一次看到 3 个城市的当前天气和预报。”
+我就帮你选合适的方式（扩展当前 change 或新建 change），并用我们刚才那套中文模板起草 proposal/specs/design。
+
+。。。
+
+
+
+(base) billhuang@bh-m1-max weather-report % cd .cursor 
+(base) billhuang@bh-m1-max .cursor % ls
+commands	skills
+(base) billhuang@bh-m1-max .cursor % cd commands 
+(base) billhuang@bh-m1-max commands % ls
+opsx-apply.md		opsx-explore.md		opsx-sync.md
+opsx-archive.md		opsx-ff.md		opsx-verify.md
+opsx-bulk-archive.md	opsx-new.md
+opsx-continue.md	opsx-onboard.md
+(base) billhuang@bh-m1-max commands % cd ..
+(base) billhuang@bh-m1-max .cursor % cd skills 
+(base) billhuang@bh-m1-max skills % ls
+openspec-apply-change		openspec-ff-change
+openspec-archive-change		openspec-new-change
+openspec-bulk-archive-change	openspec-onboard
+openspec-continue-change	openspec-sync-specs
+openspec-explore		openspec-verify-change
+(base) billhuang@bh-m1-max skills % cd ..
+(base) billhuang@bh-m1-max .cursor % pwd
+/Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/.cursor
+(base) billhuang@bh-m1-max .cursor % cd ..
+openspec
+(base) billhuang@bh-m1-max weather-report % ls
+openspec
+(base) billhuang@bh-m1-max weather-report % cd openspec 
+(base) billhuang@bh-m1-max openspec % ls
+changes		config.yaml	specs
+(base) billhuang@bh-m1-max openspec % pwd
+/Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/openspec
+(base) billhuang@bh-m1-max openspec % cd specs 
+(base) billhuang@bh-m1-max specs % ls
+(base) billhuang@bh-m1-max specs % cd .
+(base) billhuang@bh-m1-max specs % cd ..
+(base) billhuang@bh-m1-max openspec % ls
+changes		config.yaml	specs
+(base) billhuang@bh-m1-max openspec % pwd
+/Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/openspec
+(base) billhuang@bh-m1-max sdd_openspec % ls
+feature.jpg		SDD产品实践.pdf		templates
+openspec_tips.txt	spec_fields.jpg		weather-report
+(base) billhuang@bh-m1-max sdd_openspec % cd weather-report 
+(base) billhuang@bh-m1-max weather-report % ls
+openspec
+
+(base) billhuang@bh-m1-max weather-report % openspec init 
+✔ Select tools to set up (22 available) Antigravity, Claude Code, Cursor, GitHub
+ Copilot, OpenCode, Codex
+✔ Setup complete for Antigravity
+✔ Setup complete for Claude Code
+✔ Setup complete for Cursor
+✔ Setup complete for GitHub Copilot
+✔ Setup complete for OpenCode
+✔ Setup complete for Codex
+
+OpenSpec Setup Complete
+
+Created: Codex
+Refreshed: Antigravity, Claude Code, Cursor, GitHub Copilot, OpenCode
+10 skills and 10 commands in .codex, .agent, .claude, .cursor, .github, .opencode/
+Config: openspec/config.yaml (exists)
+
+Getting started:
+  /opsx:new       Start a new change
+  /opsx:continue  Create the next artifact
+  /opsx:apply     Implement tasks
+
+Learn more: https://github.com/Fission-AI/OpenSpec
+Feedback:   https://github.com/Fission-AI/OpenSpec/issues
+
+Restart your IDE for slash commands to take effect.
+
+(base) billhuang@bh-m1-max weather-report % openspec update
+✓ All 6 tool(s) up to date (v1.1.1)
+  Tools: antigravity, claude, codex, cursor, github-copilot, opencode
+
+Use --force to refresh skills anyway.
+
+
+
+
+brew install pandoc
+
+Then,
+
+cd /Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/.cursor/commands
+
+
+## add command/skill
+(base) billhuang@bh-m1-max commands % vi opsx-docgen.md
+---
+name: /opsx-docgen
+id: opsx-docgen
+category: Workflow
+description: 从当前变更的 specs/design/tasks 生成 Word/PPTXF 演示文档
+---
+
+....
+
+
+
+(base) billhuang@bh-m1-max commands % pwd
+
+/Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/.cursor/commands
+
+
+In this folder: /Users/billhuang/SRC/vibe_coding/sdd_openspec/weather-report/ 
+
+Generate the default reference files once:
+
+pandoc -o ref.docx --print-default-data-file reference.docx
+
+pandoc -o ref.pptx --print-default-data-file reference.pptx
+
+Open in Word/PowerPoint, tweak headings/tables/background/theme (e.g., blue accents), save as reference.docx / reference.pptx in project root.
+Manually run pandoc with --reference-doc=reference.docx (or update skill later to auto-detect).
+
+
+
+Restart cursor | IDE, then type: /opsx-docgen 
+
+
