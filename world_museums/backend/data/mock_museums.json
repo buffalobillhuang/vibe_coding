@@ -1,0 +1,169 @@
+{
+  "beijing": [
+    {
+      "id": "national_museum_china",
+      "name": "中国国家博物馆",
+      "location": "北京市东城区东长安街 16 号",
+      "introduction": "中国国家博物馆位于天安门广场东侧，是世界上最大的博物馆之一，馆藏文物超过 140 万件，涵盖了从古代到现代的中国历史和文化。主要展览包括《古代中国》、《复兴之路》等。",
+      "images": [
+        "https://picsum.photos/seed/nmc1/300/200",
+        "https://picsum.photos/seed/nmc2/300/200",
+        "https://picsum.photos/seed/nmc3/300/200"
+      ],
+      "videos": [
+        {"title": "中国国家博物馆参观指南", "embedUrl": "https://player.bilibili.com/player.html?bvid=BV1GK4y1t7hF&page=1"},
+        {"title": "国博精品文物展示", "embedUrl": "https://player.bilibili.com/player.html?bvid=BV1uA411x7nN&page=1"}
+      ],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/中国国家博物馆",
+        "bilibili": "https://www.bilibili.com/"
+      }
+    },
+    {
+      "id": "palace_museum",
+      "name": "故宫博物院",
+      "location": "北京市东城区景山前街 4 号",
+      "introduction": "故宫博物院位于北京中心，是在明清皇宫及其收藏基础上建立起来的综合性博物馆。始建于明永乐四年（1406 年），是世界上现存规模最大、保存最完整的木质结构古建筑群。馆藏文物超过 180 万件。",
+      "images": [
+        "https://picsum.photos/seed/palace1/300/200",
+        "https://picsum.photos/seed/palace2/300/200",
+        "https://picsum.photos/seed/palace3/300/200"
+      ],
+      "videos": [
+        {"title": "故宫博物院全景导览", "embedUrl": "https://player.bilibili.com/player.html?bvid=BV1D7411y7kz&page=1"},
+        {"title": "故宫珍宝馆介绍", "embedUrl": "https://player.bilibili.com/player.html?bvid=BV1ft4y1t7Qp&page=1"}
+      ],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/故宫博物院",
+        "bilibili": "https://www.bilibili.com/"
+      }
+    },
+    {
+      "id": "capital_museum",
+      "name": "首都博物馆",
+      "location": "北京市丰台区西三环中路甲 9 号",
+      "introduction": "首都博物馆是北京地区的大型综合性博物馆，展示了北京从远古时期至今的历史文化。常设展览包括《古都北京》、《京华旧梦》等，馆藏文物超过 15 万件。",
+      "images": [
+        "https://picsum.photos/seed/capital1/300/200",
+        "https://picsum.photos/seed/capital2/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/首都博物馆",
+        "bilibili": ""
+      }
+    }
+  ],
+  "shanghai": [
+    {
+      "id": "shanghai_museum",
+      "name": "上海博物馆",
+      "location": "上海市黄浦区人民大道 201 号",
+      "introduction": "上海博物馆是一座大型的中国古代艺术博物馆，位于人民广场。馆藏文物超过 12 万件，包括青铜器、陶瓷、书画、玉器、印章等，跨越五千年中国历史。常设展览有《中国古代青铜馆》、《中国古代陶瓷馆》等。",
+      "images": [
+        "https://picsum.photos/seed/shm1/300/200",
+        "https://picsum.photos/seed/shm2/300/200",
+        "https://picsum.photos/seed/shm3/300/200"
+      ],
+      "videos": [
+        {"title": "上海博物馆青铜器精品展", "embedUrl": "https://player.bilibili.com/player.html?bvid=BV1gE411x76K&page=1"}
+      ],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/上海博物馆",
+        "bilibili": "https://www.bilibili.com/"
+      }
+    },
+    {
+      "id": "shanghai_art_museum",
+      "name": "中华艺术宫（原上海世博会中国馆）",
+      "location": "上海市浦东新区周家渡上南路 205 号",
+      "introduction": "中华艺术宫是以中国 2010 年上海世博会中国馆为主体建立的公立美术馆，建筑面积超过 15 万平方米。主要展示近现代中国艺术作品，是上海重要的文化艺术地标之一。",
+      "images": [
+        "https://picsum.photos/seed/art1/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/中华艺术宫",
+        "bilibili": ""
+      }
+    }
+  ],
+  "xi_an": [
+    {
+      "id": "shaanxi_history_museum",
+      "name": "陕西历史博物馆",
+      "location": "陕西省西安市雁塔区小寨东路 91 号",
+      "introduction": "陕西历史博物馆是中国第一座大型现代化国家级博物馆，位于大雁塔附近。馆藏文物超过 170 万件，以先秦青铜器、唐三彩、唐代壁画最为著名，被誉为'古都明珠，华夏宝库'。",
+      "images": [
+        "https://picsum.photos/seed/shaanxi1/300/200",
+        "https://picsum.photos/seed/shaanxi2/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/陕西历史博物馆",
+        "bilibili": ""
+      }
+    },
+    {
+      "id": "terra_cotta_museum",
+      "name": "秦始皇兵马俑博物馆",
+      "location": "陕西省西安市临潼区秦陵北路",
+      "introduction": "秦始皇兵马俑博物馆位于秦始皇陵东侧，是世界第八大奇迹。1974 年发现的兵马俑坑出土了数千件真人大小的陶俑和战马，展现了秦朝军队的壮观景象，是研究中国古代军事和历史的重要资料。",
+      "images": [
+        "https://picsum.photos/seed/terra1/300/200",
+        "https://picsum.photos/seed/terra2/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/秦始皇兵马俑博物馆",
+        "bilibili": ""
+      }
+    }
+  ],
+  "nanjing": [
+    {
+      "id": "museum_of_nanjing_history",
+      "name": "南京博物院",
+      "location": "江苏省南京市玄武区中山东路 321 号",
+      "introduction": "南京博物院是中国三大博物馆之一，历史悠久。馆藏文物超过 40 万件，包括新石器时代陶器、商周青铜器、历代瓷器、书画等。常设展览有'镇院之宝'展厅和'江苏古代文明展'。",
+      "images": [
+        "https://picsum.photos/seed/nanjing1/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/南京博物院",
+        "bilibili": ""
+      }
+    }
+  ],
+  "chengdu": [
+    {
+      "id": "sichuan_museum",
+      "name": "四川博物院",
+      "location": "四川省成都市青羊区浣花南路 251 号",
+      "introduction": "四川博物院是西南地区重要的博物馆之一，馆藏文物超过 30 万件。以巴蜀青铜器、汉代画像砖、张大千书画和四川民间工艺最为著名，展示了四川地区丰富的历史文化。",
+      "images": [
+        "https://picsum.photos/seed/sc1/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/四川博物院",
+        "bilibili": ""
+      }
+    },
+    {
+      "id": "dujiangyan_museum",
+      "name": "三星堆博物馆",
+      "location": "四川省广汉市西安路 133 号",
+      "introduction": "三星堆博物馆专门为展示三星堆遗址出土文物而建。馆藏青铜面具、金杖、玉器等文物，展现了古蜀文明的独特魅力，被誉为'20 世纪人类最伟大的考古发现之一'。",
+      "images": [
+        "https://picsum.photos/seed/sxg1/300/200"
+      ],
+      "videos": [],
+      "sources": {
+        "baike": "https://baike.baidu.com/item/三星堆博物馆",
+        "bilibili": ""
+      }
+    }
+  ]
+}

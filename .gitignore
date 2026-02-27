@@ -11,3 +11,7 @@ sdd_openspec/weather-report/ref.docx
 sdd_openspec/weather-report/ref.pptx
 sdd_openspec/weather-report/reference.docx
 sdd_openspec/weather-report/reference.pptx
+/chess/.opencode
+/chess/chess-website/backend/venv
+/world_museums/.opencode
+*.pyc
