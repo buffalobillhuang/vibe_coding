@@ -1,0 +1,18 @@
+services:
+  siguo:
+    build: .
+    command: ["--addr", ":8080"]
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["cloud"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - siguo
