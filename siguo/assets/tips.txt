@@ -1,0 +1,11 @@
+to start:
+/opt/homebrew/bin/go run ./cmd/siguo
+go run ./cmd/siguo
+
+to stop: 
+lsof -ti :8080 | xargs kill
+lsof -ti :8080 | xargs kill -9
+
+or 
+
+pids=$(lsof -ti :8080) && [ -n "$pids" ] && kill $pids

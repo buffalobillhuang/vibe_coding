@@ -72,7 +72,7 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 	if winners := next.checkWinner(); winners != nil {
 		next.Phase = Ended
 		next.Winner = winners
-		events = append(events, Event{Type: EventTeamEliminated, Losers: losingTeam(winners), Winners: winners})
+		events = append(events, Event{Type: EventTeamEliminated, Losers: losingSide(next.Mode, winners), Winners: winners})
 		events = append(events, Event{Type: EventGameEnded, Winners: winners})
 	} else {
 		next.advanceTurn()
@@ -83,6 +83,19 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 }
 
 func losingTeam(winners []Seat) []Seat {
+	return losingSide(ModeSiguo, winners)
+}
+
+func losingSide(mode GameMode, winners []Seat) []Seat {
+	if mode == ModeJunqi {
+		if len(winners) != 1 {
+			return nil
+		}
+		if winners[0] == North {
+			return []Seat{South}
+		}
+		return []Seat{North}
+	}
 	if len(winners) != 2 {
 		return nil
 	}

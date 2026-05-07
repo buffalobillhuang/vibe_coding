@@ -4,6 +4,20 @@ import "fmt"
 
 const BoardSize = 17
 
+type GameMode string
+
+const (
+	ModeSiguo GameMode = "siguo"
+	ModeJunqi GameMode = "junqi"
+)
+
+func (m GameMode) String() string {
+	if m == ModeJunqi {
+		return string(ModeJunqi)
+	}
+	return string(ModeSiguo)
+}
+
 type Seat uint8
 
 const (
@@ -14,6 +28,20 @@ const (
 )
 
 var Seats = []Seat{North, East, South, West}
+
+func ActiveSeats(mode GameMode) []Seat {
+	if mode == ModeJunqi {
+		return []Seat{North, South}
+	}
+	return []Seat{North, East, South, West}
+}
+
+func TurnOrder(mode GameMode) []Seat {
+	if mode == ModeJunqi {
+		return []Seat{North, South}
+	}
+	return []Seat{North, West, South, East}
+}
 
 func (s Seat) String() string {
 	switch s {
@@ -202,6 +230,7 @@ type Event struct {
 }
 
 type GameState struct {
+	Mode       GameMode
 	Phase      Phase
 	Turn       Seat
 	Pieces     map[PieceID]Piece

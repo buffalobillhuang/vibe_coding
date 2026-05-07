@@ -102,7 +102,7 @@ func handleRooms(h *hub.Hub) http.HandlerFunc {
 			writeError(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
-		room.ConfigureInitial(req.TimeControl, req.AllowTeamChat)
+		room.ConfigureInitial(req.Mode, req.TimeControl, req.AllowTeamChat)
 		player, err := room.Join(req.Name, "")
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

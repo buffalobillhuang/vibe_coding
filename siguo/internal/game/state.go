@@ -13,7 +13,15 @@ var (
 )
 
 func NewState(pieces []Piece, placements map[PieceID]Pos, turn Seat) (*GameState, error) {
+	return NewStateForMode(ModeSiguo, pieces, placements, turn)
+}
+
+func NewStateForMode(mode GameMode, pieces []Piece, placements map[PieceID]Pos, turn Seat) (*GameState, error) {
+	if mode != ModeJunqi {
+		mode = ModeSiguo
+	}
 	g := &GameState{
+		Mode:       mode,
 		Phase:      Playing,
 		Turn:       turn,
 		Pieces:     make(map[PieceID]Piece, len(pieces)),
@@ -31,7 +39,7 @@ func NewState(pieces []Piece, placements map[PieceID]Pos, turn Seat) (*GameState
 			piece.Alive = true
 		}
 		pos, ok := placements[piece.ID]
-		if !ok || !IsPlayable(pos) {
+		if !ok || !IsPlayableForMode(mode, pos) {
 			return nil, ErrDestination
 		}
 		if g.BoardIdx[pos.Row][pos.Col] != 0 {
@@ -94,13 +102,20 @@ func (g *GameState) positionOf(id PieceID) (Pos, bool) {
 }
 
 func (g *GameState) advanceTurn() {
-	next := g.Turn.Next()
-	for i := 0; i < 4; i++ {
+	order := TurnOrder(g.Mode)
+	start := 0
+	for i, seat := range order {
+		if seat == g.Turn {
+			start = i
+			break
+		}
+	}
+	for i := 1; i <= len(order); i++ {
+		next := order[(start+i)%len(order)]
 		if !g.Eliminated[next] {
 			g.Turn = next
 			return
 		}
-		next = next.Next()
 	}
 }
 
@@ -144,7 +159,33 @@ func (g *GameState) eliminate(owner Seat) {
 	}
 }
 
+func (g *GameState) AdvanceTurn() {
+	g.advanceTurn()
+}
+
+func (g *GameState) Eliminate(owner Seat) {
+	g.eliminate(owner)
+}
+
+func (g *GameState) CheckWinner() []Seat {
+	return g.checkWinner()
+}
+
 func (g *GameState) checkWinner() []Seat {
+	if g.Mode == ModeJunqi {
+		northLost := g.Eliminated[North]
+		southLost := g.Eliminated[South]
+		switch {
+		case northLost && southLost:
+			return []Seat{}
+		case northLost:
+			return []Seat{South}
+		case southLost:
+			return []Seat{North}
+		default:
+			return nil
+		}
+	}
 	nsLost := g.Eliminated[North] && g.Eliminated[South]
 	ewLost := g.Eliminated[East] && g.Eliminated[West]
 	switch {

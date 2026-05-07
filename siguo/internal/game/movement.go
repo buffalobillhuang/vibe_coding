@@ -6,7 +6,7 @@ func LegalMoves(g *GameState, pieceID PieceID) []Move {
 		return nil
 	}
 	from, ok := g.positionOf(pieceID)
-	if !ok || BoardCell(from).Type == HQ {
+	if !ok || g.boardCell(from).Type == HQ {
 		return nil
 	}
 
@@ -26,12 +26,12 @@ func LegalMoves(g *GameState, pieceID PieceID) []Move {
 	}
 	for _, d := range diagonalDirs {
 		to := Pos{from.Row + d.Row, from.Col + d.Col}
-		if BoardCell(from).Type == Camp || BoardCell(to).Type == Camp {
+		if g.boardCell(from).Type == Camp || g.boardCell(to).Type == Camp {
 			add(to, nil)
 		}
 	}
 
-	if !IsRailroad(from) {
+	if !g.isRailroad(from) {
 		return moves
 	}
 
@@ -58,10 +58,10 @@ func IsLegalMove(g *GameState, move Move) bool {
 }
 
 func canEnter(g *GameState, mover Piece, to Pos) bool {
-	if !to.InBounds() || !IsPlayable(to) {
+	if !to.InBounds() || !g.isPlayable(to) {
 		return false
 	}
-	cell := BoardCell(to)
+	cell := g.boardCell(to)
 	if mover.Rank == Bomb && cell.Type == HQ {
 		return false
 	}
@@ -69,7 +69,7 @@ func canEnter(g *GameState, mover Piece, to Pos) bool {
 	if !occupied {
 		return true
 	}
-	if mover.Owner.SameTeam(target.Owner) {
+	if g.sameSide(mover.Owner, target.Owner) {
 		return false
 	}
 	if cell.Type == Camp {
@@ -80,27 +80,31 @@ func canEnter(g *GameState, mover Piece, to Pos) bool {
 
 func straightRailMoves(g *GameState, mover Piece, from Pos) []Pos {
 	out := map[Pos]bool{}
-	if next, exitDir, ok := directConnectorFrom(from); ok {
-		if occupant, occupied := g.PieceAt(next); occupied {
-			if !mover.Owner.SameTeam(occupant.Owner) && BoardCell(next).Type != Camp {
+	if g.Mode != ModeJunqi {
+		if next, exitDir, ok := directConnectorFrom(from); ok {
+			if occupant, occupied := g.PieceAt(next); occupied {
+				if !g.sameSide(mover.Owner, occupant.Owner) && g.boardCell(next).Type != Camp {
+					out[next] = true
+				}
+			} else {
 				out[next] = true
-			}
-		} else {
-			out[next] = true
-			for _, dest := range continueRailLine(g, mover, next, exitDir, 1) {
-				out[dest] = true
+				for _, dest := range continueRailLine(g, mover, next, exitDir, 1) {
+					out[dest] = true
+				}
 			}
 		}
 	}
-	for _, first := range railroadAdj[from] {
+	for _, first := range g.railroadAdj()[from] {
 		dir := edgeDir(from, first)
 		for _, dest := range continueRailLine(g, mover, from, dir, 0) {
 			out[dest] = true
 		}
 	}
-	if to, ok := railConnectorPairs()[from]; ok {
-		if canEnter(g, mover, to) {
-			out[to] = true
+	if g.Mode != ModeJunqi {
+		if to, ok := railConnectorPairs()[from]; ok {
+			if canEnter(g, mover, to) {
+				out[to] = true
+			}
 		}
 	}
 
@@ -129,13 +133,13 @@ func continueRailLine(g *GameState, mover Piece, from Pos, dir Pos, turns int) [
 		}
 		visited[cur] = true
 
-		for _, next := range railroadAdj[cur.pos] {
+		for _, next := range g.railroadAdj()[cur.pos] {
 			nextDir := edgeDir(cur.pos, next)
 			if nextDir != cur.dir {
 				continue
 			}
 			if occupant, occupied := g.PieceAt(next); occupied {
-				if !mover.Owner.SameTeam(occupant.Owner) && BoardCell(next).Type != Camp {
+				if !g.sameSide(mover.Owner, occupant.Owner) && g.boardCell(next).Type != Camp {
 					out[next] = true
 				}
 				continue
@@ -143,10 +147,10 @@ func continueRailLine(g *GameState, mover Piece, from Pos, dir Pos, turns int) [
 			out[next] = true
 			queue = append(queue, node{pos: next, dir: nextDir, turns: cur.turns})
 		}
-		if cur.turns == 0 {
+		if g.Mode != ModeJunqi && cur.turns == 0 {
 			if next, exitDir, ok := connectorTransition(cur.pos, cur.dir); ok {
 				if occupant, occupied := g.PieceAt(next); occupied {
-					if !mover.Owner.SameTeam(occupant.Owner) && BoardCell(next).Type != Camp {
+					if !g.sameSide(mover.Owner, occupant.Owner) && g.boardCell(next).Type != Camp {
 						out[next] = true
 					}
 				} else {
@@ -162,6 +166,32 @@ func continueRailLine(g *GameState, mover Piece, from Pos, dir Pos, turns int) [
 		moves = append(moves, pos)
 	}
 	return moves
+}
+
+func (g *GameState) boardCell(pos Pos) Cell {
+	return BoardCellForMode(g.Mode, pos)
+}
+
+func (g *GameState) isPlayable(pos Pos) bool {
+	return IsPlayableForMode(g.Mode, pos)
+}
+
+func (g *GameState) isRailroad(pos Pos) bool {
+	return IsRailroadForMode(g.Mode, pos)
+}
+
+func (g *GameState) railroadAdj() map[Pos][]Pos {
+	if g.Mode == ModeJunqi {
+		return junqiRailroadAdj
+	}
+	return railroadAdj
+}
+
+func (g *GameState) sameSide(a, b Seat) bool {
+	if g.Mode == ModeJunqi {
+		return a == b
+	}
+	return a.SameTeam(b)
 }
 
 func edgeDir(from, to Pos) Pos {

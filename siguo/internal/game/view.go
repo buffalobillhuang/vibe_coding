@@ -15,6 +15,7 @@ type ClientCell struct {
 }
 
 type ClientView struct {
+	Mode       GameMode
 	Viewer     Seat
 	Phase      Phase
 	Turn       Seat
@@ -26,6 +27,7 @@ type ClientView struct {
 
 func (g *GameState) ViewFor(viewer Seat) ClientView {
 	view := ClientView{
+		Mode:       g.Mode,
 		Viewer:     viewer,
 		Phase:      g.Phase,
 		Turn:       g.Turn,
@@ -50,7 +52,7 @@ func (g *GameState) ViewFor(viewer Seat) ClientView {
 	for row := 0; row < BoardSize; row++ {
 		for col := 0; col < BoardSize; col++ {
 			pos := Pos{row, col}
-			cell := BoardCell(pos)
+			cell := BoardCellForMode(g.Mode, pos)
 			if cell.Type == OffBoard {
 				continue
 			}

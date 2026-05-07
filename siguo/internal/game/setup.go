@@ -18,6 +18,10 @@ var StandardArmy = map[Rank]int{
 }
 
 func ValidateSetup(owner Seat, pieces []Piece, placements map[PieceID]Pos) error {
+	return ValidateSetupForMode(ModeSiguo, owner, pieces, placements)
+}
+
+func ValidateSetupForMode(mode GameMode, owner Seat, pieces []Piece, placements map[PieceID]Pos) error {
 	counts := map[Rank]int{}
 	occupied := map[Pos]bool{}
 
@@ -34,7 +38,7 @@ func ValidateSetup(owner Seat, pieces []Piece, placements map[PieceID]Pos) error
 		}
 		occupied[pos] = true
 
-		if err := validateSetupCell(owner, piece.Rank, pos); err != nil {
+		if err := validateSetupCellForMode(mode, owner, piece.Rank, pos); err != nil {
 			return fmt.Errorf("piece %d: %w", piece.ID, err)
 		}
 		counts[piece.Rank]++
@@ -62,7 +66,15 @@ func validateSetupCell(owner Seat, rank Rank, pos Pos) error {
 }
 
 func ValidateSetupCell(owner Seat, rank Rank, pos Pos) error {
-	cell := BoardCell(pos)
+	return ValidateSetupCellForMode(ModeSiguo, owner, rank, pos)
+}
+
+func validateSetupCellForMode(mode GameMode, owner Seat, rank Rank, pos Pos) error {
+	return ValidateSetupCellForMode(mode, owner, rank, pos)
+}
+
+func ValidateSetupCellForMode(mode GameMode, owner Seat, rank Rank, pos Pos) error {
+	cell := BoardCellForMode(mode, pos)
 	if cell.Type == OffBoard {
 		return ErrDestination
 	}
@@ -75,16 +87,26 @@ func ValidateSetupCell(owner Seat, rank Rank, pos Pos) error {
 	if rank == Flag && cell.Type != HQ {
 		return fmt.Errorf("flag must be placed in HQ")
 	}
-	if rank == Mine && !isBackTwoRows(owner, pos) {
+	if rank == Mine && !isBackTwoRows(mode, owner, pos) {
 		return fmt.Errorf("mine must be placed in the back two rows")
 	}
-	if rank == Bomb && isFrontRow(owner, pos) {
+	if rank == Bomb && isFrontRow(mode, owner, pos) {
 		return fmt.Errorf("bomb cannot be placed on the front row")
 	}
 	return nil
 }
 
-func isBackTwoRows(owner Seat, pos Pos) bool {
+func isBackTwoRows(mode GameMode, owner Seat, pos Pos) bool {
+	if mode == ModeJunqi {
+		switch owner {
+		case North:
+			return pos.Row <= 3
+		case South:
+			return pos.Row >= 13
+		default:
+			return false
+		}
+	}
 	switch owner {
 	case North:
 		return pos.Row <= 1
@@ -99,7 +121,17 @@ func isBackTwoRows(owner Seat, pos Pos) bool {
 	}
 }
 
-func isFrontRow(owner Seat, pos Pos) bool {
+func isFrontRow(mode GameMode, owner Seat, pos Pos) bool {
+	if mode == ModeJunqi {
+		switch owner {
+		case North:
+			return pos.Row == 7
+		case South:
+			return pos.Row == 9
+		default:
+			return false
+		}
+	}
 	switch owner {
 	case North:
 		return pos.Row == 5

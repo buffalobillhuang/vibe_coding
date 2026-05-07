@@ -17,26 +17,45 @@ type Cell struct {
 }
 
 var defaultBoard [BoardSize][BoardSize]Cell
+var junqiBoard [BoardSize][BoardSize]Cell
 var railroadAdj map[Pos][]Pos
+var junqiRailroadAdj map[Pos][]Pos
 
 func init() {
 	defaultBoard = buildBoard()
+	junqiBoard = buildJunqiBoard()
 	railroadAdj = buildRailroadAdjacency(defaultBoard)
+	junqiRailroadAdj = buildOrthogonalRailroadAdjacency(junqiBoard)
 }
 
 func BoardCell(pos Pos) Cell {
+	return BoardCellForMode(ModeSiguo, pos)
+}
+
+func BoardCellForMode(mode GameMode, pos Pos) Cell {
 	if !pos.InBounds() {
 		return Cell{Type: OffBoard}
+	}
+	if mode == ModeJunqi {
+		return junqiBoard[pos.Row][pos.Col]
 	}
 	return defaultBoard[pos.Row][pos.Col]
 }
 
 func IsPlayable(pos Pos) bool {
-	return BoardCell(pos).Type != OffBoard
+	return IsPlayableForMode(ModeSiguo, pos)
+}
+
+func IsPlayableForMode(mode GameMode, pos Pos) bool {
+	return BoardCellForMode(mode, pos).Type != OffBoard
 }
 
 func IsRailroad(pos Pos) bool {
-	cell := BoardCell(pos)
+	return IsRailroadForMode(ModeSiguo, pos)
+}
+
+func IsRailroadForMode(mode GameMode, pos Pos) bool {
+	cell := BoardCellForMode(mode, pos)
 	return cell.Type == Railroad || cell.Type == Frontline
 }
 
@@ -75,6 +94,60 @@ func buildBoard() [BoardSize][BoardSize]Cell {
 		}
 	}
 
+	return b
+}
+
+func buildJunqiBoard() [BoardSize][BoardSize]Cell {
+	var b [BoardSize][BoardSize]Cell
+	for r := range b {
+		for c := range b[r] {
+			b[r][c] = Cell{Type: OffBoard}
+		}
+	}
+
+	for r := 2; r <= 7; r++ {
+		for c := 6; c <= 10; c++ {
+			b[r][c] = Cell{Type: Normal, Home: seatPtr(North)}
+		}
+	}
+	for r := 9; r <= 14; r++ {
+		for c := 6; c <= 10; c++ {
+			b[r][c] = Cell{Type: Normal, Home: seatPtr(South)}
+		}
+	}
+	for _, p := range junqiRailCells() {
+		var home *Seat
+		switch {
+		case p.Row <= 7:
+			home = seatPtr(North)
+		case p.Row >= 9:
+			home = seatPtr(South)
+		}
+		t := Railroad
+		if p.Row == 8 && p.Col == 8 {
+			t = Frontline
+		}
+		b[p.Row][p.Col] = Cell{Type: t, Home: home}
+	}
+	for _, col := range []int{6, 8, 10} {
+		t := Railroad
+		if col == 8 {
+			t = Frontline
+		}
+		b[8][col] = Cell{Type: t}
+	}
+	for _, p := range junqiCampCells(North) {
+		b[p.Row][p.Col] = Cell{Type: Camp, Home: seatPtr(North)}
+	}
+	for _, p := range junqiCampCells(South) {
+		b[p.Row][p.Col] = Cell{Type: Camp, Home: seatPtr(South)}
+	}
+	for _, p := range junqiHQCells(North) {
+		b[p.Row][p.Col] = Cell{Type: HQ, Home: seatPtr(North)}
+	}
+	for _, p := range junqiHQCells(South) {
+		b[p.Row][p.Col] = Cell{Type: HQ, Home: seatPtr(South)}
+	}
 	return b
 }
 
@@ -144,6 +217,50 @@ func hqCells(seat Seat) []Pos {
 	}
 }
 
+func junqiCampCells(seat Seat) []Pos {
+	switch seat {
+	case North:
+		return []Pos{{4, 7}, {4, 9}, {5, 8}, {6, 7}, {6, 9}}
+	case South:
+		return []Pos{{10, 7}, {10, 9}, {11, 8}, {12, 7}, {12, 9}}
+	default:
+		return nil
+	}
+}
+
+func junqiHQCells(seat Seat) []Pos {
+	switch seat {
+	case North:
+		return []Pos{{2, 7}, {2, 9}}
+	case South:
+		return []Pos{{14, 7}, {14, 9}}
+	default:
+		return nil
+	}
+}
+
+func junqiRailCells() []Pos {
+	seen := map[Pos]bool{}
+	add := func(p Pos) {
+		seen[p] = true
+	}
+	for _, row := range []int{3, 7, 9, 13} {
+		for col := 6; col <= 10; col++ {
+			add(Pos{row, col})
+		}
+	}
+	for _, col := range []int{6, 8, 10} {
+		for row := 3; row <= 13; row++ {
+			add(Pos{row, col})
+		}
+	}
+	out := make([]Pos, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	return out
+}
+
 func isHomeRail(seat Seat, p Pos) bool {
 	switch seat {
 	case North:
@@ -160,13 +277,20 @@ func isHomeRail(seat Seat, p Pos) bool {
 }
 
 func buildRailroadAdjacency(b [BoardSize][BoardSize]Cell) map[Pos][]Pos {
-	adj := make(map[Pos][]Pos)
-	add := func(a, c Pos) {
-		if !isRailroadCell(b, a) || !isRailroadCell(b, c) {
-			return
-		}
-		adj[a] = append(adj[a], c)
+	adj := buildOrthogonalRailroadAdjacency(b)
+	for _, edge := range centralRailEdges() {
+		addRailEdge(b, adj, edge[0], edge[1])
+		addRailEdge(b, adj, edge[1], edge[0])
 	}
+	for _, edge := range directConnectorEdges() {
+		addRailEdge(b, adj, edge[0], edge[1])
+		addRailEdge(b, adj, edge[1], edge[0])
+	}
+	return adj
+}
+
+func buildOrthogonalRailroadAdjacency(b [BoardSize][BoardSize]Cell) map[Pos][]Pos {
+	adj := make(map[Pos][]Pos)
 	for r := 0; r < BoardSize; r++ {
 		for c := 0; c < BoardSize; c++ {
 			p := Pos{r, c}
@@ -176,20 +300,19 @@ func buildRailroadAdjacency(b [BoardSize][BoardSize]Cell) map[Pos][]Pos {
 			for _, d := range orthogonalDirs {
 				n := Pos{p.Row + d.Row, p.Col + d.Col}
 				if n.InBounds() && isRailroadCell(b, n) {
-					add(p, n)
+					addRailEdge(b, adj, p, n)
 				}
 			}
 		}
 	}
-	for _, edge := range centralRailEdges() {
-		add(edge[0], edge[1])
-		add(edge[1], edge[0])
-	}
-	for _, edge := range directConnectorEdges() {
-		add(edge[0], edge[1])
-		add(edge[1], edge[0])
-	}
 	return adj
+}
+
+func addRailEdge(b [BoardSize][BoardSize]Cell, adj map[Pos][]Pos, a, c Pos) {
+	if !isRailroadCell(b, a) || !isRailroadCell(b, c) {
+		return
+	}
+	adj[a] = append(adj[a], c)
 }
 
 func isRailroadCell(b [BoardSize][BoardSize]Cell, p Pos) bool {

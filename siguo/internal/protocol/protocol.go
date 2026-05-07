@@ -9,13 +9,23 @@ type TimeControl struct {
 }
 
 func DefaultTimeControl() TimeControl {
-	return TimeControl{SetupSeconds: 180, MoveSeconds: 30, IncrementSec: 5}
+	return TimeControl{SetupSeconds: 180, MoveSeconds: 15, IncrementSec: 0}
+}
+
+const MaxSkipsPerPlayer = 5
+
+type PendingRequest struct {
+	Kind  string      `json:"kind"`
+	From  game.Seat   `json:"from"`
+	Stage string      `json:"stage"`
+	Acks  []game.Seat `json:"acks,omitempty"`
 }
 
 type CreateRoomRequest struct {
-	Name          string       `json:"name"`
-	TimeControl   *TimeControl `json:"timeControl,omitempty"`
-	AllowTeamChat *bool        `json:"allowTeamChat,omitempty"`
+	Name          string        `json:"name"`
+	Mode          game.GameMode `json:"mode,omitempty"`
+	TimeControl   *TimeControl  `json:"timeControl,omitempty"`
+	AllowTeamChat *bool         `json:"allowTeamChat,omitempty"`
 }
 
 type JoinRoomRequest struct {
@@ -32,16 +42,23 @@ type JoinRoomResponse struct {
 }
 
 type RoomSnapshot struct {
-	Code          string           `json:"code"`
-	Phase         string           `json:"phase"`
-	Seats         []SeatInfo       `json:"seats"`
-	HostSeat      game.Seat        `json:"hostSeat"`
-	AllowTeamChat bool             `json:"allowTeamChat"`
-	TimeControl   TimeControl      `json:"timeControl"`
-	Turn          game.Seat        `json:"turn"`
-	Winner        []game.Seat      `json:"winner,omitempty"`
-	Ready         []game.Seat      `json:"ready,omitempty"`
-	View          *game.ClientView `json:"view,omitempty"`
+	Code           string             `json:"code"`
+	Mode           game.GameMode      `json:"mode"`
+	Phase          string             `json:"phase"`
+	Seats          []SeatInfo         `json:"seats"`
+	HostSeat       game.Seat          `json:"hostSeat"`
+	AllowTeamChat  bool               `json:"allowTeamChat"`
+	TimeControl    TimeControl        `json:"timeControl"`
+	Turn           game.Seat          `json:"turn"`
+	Winner         []game.Seat        `json:"winner,omitempty"`
+	Ready          []game.Seat        `json:"ready,omitempty"`
+	View           *game.ClientView   `json:"view,omitempty"`
+	Skips          map[game.Seat]int  `json:"skips,omitempty"`
+	MaxSkips       int                `json:"maxSkips,omitempty"`
+	MoveDeadlineMs int64              `json:"moveDeadlineMs,omitempty"`
+	MoveLimitSec   int                `json:"moveLimitSec,omitempty"`
+	Eliminated     map[game.Seat]bool `json:"eliminated,omitempty"`
+	Request        *PendingRequest    `json:"request,omitempty"`
 }
 
 type SeatInfo struct {
@@ -53,21 +70,24 @@ type SeatInfo struct {
 }
 
 type ClientMessage struct {
-	Type          string       `json:"type"`
-	Seq           int64        `json:"seq,omitempty"`
-	Name          string       `json:"name,omitempty"`
-	SessionToken  string       `json:"sessionToken,omitempty"`
-	TimeControl   *TimeControl `json:"timeControl,omitempty"`
-	AllowTeamChat *bool        `json:"allowTeamChat,omitempty"`
-	PieceID       game.PieceID `json:"pieceId,omitempty"`
-	Row           int          `json:"row,omitempty"`
-	Col           int          `json:"col,omitempty"`
-	From          game.Pos     `json:"from,omitempty"`
-	To            game.Pos     `json:"to,omitempty"`
-	Path          []game.Pos   `json:"path,omitempty"`
-	Channel       string       `json:"channel,omitempty"`
-	Text          string       `json:"text,omitempty"`
-	Emote         string       `json:"emote,omitempty"`
+	Type          string        `json:"type"`
+	Seq           int64         `json:"seq,omitempty"`
+	Name          string        `json:"name,omitempty"`
+	SessionToken  string        `json:"sessionToken,omitempty"`
+	TimeControl   *TimeControl  `json:"timeControl,omitempty"`
+	AllowTeamChat *bool         `json:"allowTeamChat,omitempty"`
+	Mode          game.GameMode `json:"mode,omitempty"`
+	PieceID       game.PieceID  `json:"pieceId,omitempty"`
+	Row           int           `json:"row,omitempty"`
+	Col           int           `json:"col,omitempty"`
+	From          game.Pos      `json:"from,omitempty"`
+	To            game.Pos      `json:"to,omitempty"`
+	Path          []game.Pos    `json:"path,omitempty"`
+	Channel       string        `json:"channel,omitempty"`
+	Text          string        `json:"text,omitempty"`
+	Emote         string        `json:"emote,omitempty"`
+	Kind          string        `json:"kind,omitempty"`
+	Accept        bool          `json:"accept,omitempty"`
 }
 
 type ServerMessage struct {

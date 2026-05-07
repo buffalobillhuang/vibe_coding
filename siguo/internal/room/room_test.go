@@ -111,6 +111,241 @@ func TestStartCreatesVisibleSetupBoardForAllSeats(t *testing.T) {
 	}
 }
 
+func TestSkipAdvancesTurnAndCounts(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	if r.state.Turn != game.North {
+		t.Fatalf("turn = %v, want North", r.state.Turn)
+	}
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "move.skip", Seq: 1})
+	if r.state.Turn == game.North {
+		t.Fatalf("turn did not advance after skip")
+	}
+	if r.skips[game.North] != 1 {
+		t.Fatalf("north skips = %d, want 1", r.skips[game.North])
+	}
+}
+
+func TestSkipBeyondLimitRejected(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	r.skips[game.North] = protocol.MaxSkipsPerPlayer
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "move.skip", Seq: 1})
+	if r.skips[game.North] != protocol.MaxSkipsPerPlayer {
+		t.Fatalf("skip count changed past limit")
+	}
+}
+
+func TestTieRequestRequiresTeammateThenRivals(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	south := r.seats[game.South]
+	east := r.seats[game.East]
+	west := r.seats[game.West]
+
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "request.tie", Seq: 1})
+	if r.request == nil || r.request.Stage != "teammate" || r.request.Kind != "tie" {
+		t.Fatalf("expected teammate-stage tie request, got %+v", r.request)
+	}
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: true})
+	if r.request == nil || r.request.Stage != "rivals" {
+		t.Fatalf("expected rivals-stage tie after partner support, got %+v", r.request)
+	}
+	sendTestMessage(t, r, east.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: true})
+	if r.request == nil {
+		t.Fatalf("request resolved before all rivals acked")
+	}
+	sendTestMessage(t, r, west.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: true})
+	if r.phase != PhaseEnded || r.state.Phase != game.Ended {
+		t.Fatalf("phase = %s, want ended after tie", r.phase)
+	}
+	if len(r.state.Winner) != 0 {
+		t.Fatalf("winner = %v, want empty for draw", r.state.Winner)
+	}
+}
+
+func TestSurrenderRequestEndsAfterTeammateSupport(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	south := r.seats[game.South]
+
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "request.surrender", Seq: 1})
+	if r.request == nil || r.request.Kind != "surrender" {
+		t.Fatalf("expected surrender request pending")
+	}
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: true})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended after surrender", r.phase)
+	}
+	if !r.state.Eliminated[game.North] || !r.state.Eliminated[game.South] {
+		t.Fatalf("expected NS team eliminated after surrender")
+	}
+	if len(r.state.Winner) != 2 || !(r.state.Winner[0].SameTeam(game.East) && r.state.Winner[1].SameTeam(game.East)) {
+		t.Fatalf("winner = %v, want EW team", r.state.Winner)
+	}
+}
+
+func TestTeamWinsWhenBothRivalsEliminated(t *testing.T) {
+	r := newPlayingRoom(t)
+	r.mu.Lock()
+	r.eliminateSeatLocked(game.East)
+	if r.phase == PhaseEnded {
+		r.mu.Unlock()
+		t.Fatalf("game should still be playing after only one rival eliminated")
+	}
+	r.eliminateSeatLocked(game.West)
+	r.mu.Unlock()
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended after both rivals eliminated", r.phase)
+	}
+	if len(r.state.Winner) != 2 || r.state.Winner[0] != game.North || r.state.Winner[1] != game.South {
+		t.Fatalf("winners = %v, want NS team", r.state.Winner)
+	}
+}
+
+func TestJunqiRoomStartsWithTwoPlayers(t *testing.T) {
+	r := New("DUEL01")
+	r.ConfigureInitial(game.ModeJunqi, nil, nil)
+	north, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	south, err := r.Join("south", "")
+	if err != nil {
+		t.Fatalf("Join(south) error = %v", err)
+	}
+	if north.Seat != game.North || south.Seat != game.South {
+		t.Fatalf("seats = %s/%s, want North/South", north.Seat, south.Seat)
+	}
+	if _, err := r.Join("extra", ""); err != ErrRoomFull {
+		t.Fatalf("third Join() error = %v, want ErrRoomFull", err)
+	}
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "room.start", Seq: 1})
+	if r.phase != PhaseSetup {
+		t.Fatalf("phase = %s, want setup", r.phase)
+	}
+	if r.seats[game.East] != nil || r.seats[game.West] != nil {
+		t.Fatalf("junqi room should not allocate side seats")
+	}
+}
+
+func TestJunqiConcedeGivesOpponentSingleWinner(t *testing.T) {
+	r := newPlayingJunqiRoom(t)
+	north := r.seats[game.North]
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "concede", Seq: 1})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended", r.phase)
+	}
+	if len(r.state.Winner) != 1 || r.state.Winner[0] != game.South {
+		t.Fatalf("winner = %v, want South", r.state.Winner)
+	}
+}
+
+func TestSkipBlockedWhileRequestPending(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "request.tie", Seq: 1})
+	if r.request == nil {
+		t.Fatalf("expected pending request")
+	}
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "move.skip", Seq: 2})
+	if r.skips[game.North] != 0 {
+		t.Fatalf("skip should not register while request pending")
+	}
+}
+
+func TestAutoTimeoutAfterMaxSkipsConcedes(t *testing.T) {
+	r := newPlayingRoom(t)
+	r.skips[game.North] = protocol.MaxSkipsPerPlayer
+	r.mu.Lock()
+	r.onTurnTimeoutLocked(game.North)
+	r.mu.Unlock()
+	if !r.state.Eliminated[game.North] {
+		t.Fatalf("north should be eliminated after timeout at max skips")
+	}
+}
+
+func TestRivalRejectingTieResumesPlay(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	south := r.seats[game.South]
+	east := r.seats[game.East]
+
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "request.tie", Seq: 1})
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: true})
+	sendTestMessage(t, r, east.Token, protocol.ClientMessage{Type: "request.respond", Seq: 1, Accept: false})
+	if r.request != nil {
+		t.Fatalf("request should be cleared after rival rejection")
+	}
+	if r.phase != PhasePlaying {
+		t.Fatalf("phase = %s, want playing after rejection", r.phase)
+	}
+}
+
+func newPlayingRoom(t *testing.T) *Room {
+	t.Helper()
+	r := New("ABC123")
+	for _, name := range []string{"north", "east", "south", "west"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+	state, err := game.NewState(
+		[]game.Piece{
+			{ID: 1, Owner: game.North, Rank: game.Commander, Alive: true},
+			{ID: 2, Owner: game.East, Rank: game.Commander, Alive: true},
+			{ID: 3, Owner: game.South, Rank: game.Commander, Alive: true},
+			{ID: 4, Owner: game.West, Rank: game.Commander, Alive: true},
+		},
+		map[game.PieceID]game.Pos{
+			1: {Row: 0, Col: 8},
+			2: {Row: 8, Col: 16},
+			3: {Row: 16, Col: 8},
+			4: {Row: 8, Col: 0},
+		},
+		game.North,
+	)
+	if err != nil {
+		t.Fatalf("NewState() error = %v", err)
+	}
+	r.state = state
+	r.phase = PhasePlaying
+	r.skips = map[game.Seat]int{}
+	r.cancelTurnTimerLocked()
+	return r
+}
+
+func newPlayingJunqiRoom(t *testing.T) *Room {
+	t.Helper()
+	r := New("DUEL01")
+	r.ConfigureInitial(game.ModeJunqi, nil, nil)
+	for _, name := range []string{"north", "south"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+	state, err := game.NewStateForMode(
+		game.ModeJunqi,
+		[]game.Piece{
+			{ID: 1, Owner: game.North, Rank: game.Commander, Alive: true},
+			{ID: 2, Owner: game.South, Rank: game.Commander, Alive: true},
+		},
+		map[game.PieceID]game.Pos{
+			1: {Row: 3, Col: 8},
+			2: {Row: 12, Col: 8},
+		},
+		game.North,
+	)
+	if err != nil {
+		t.Fatalf("NewStateForMode() error = %v", err)
+	}
+	r.state = state
+	r.phase = PhasePlaying
+	r.skips = map[game.Seat]int{}
+	r.cancelTurnTimerLocked()
+	return r
+}
+
 func sendTestMessage(t *testing.T, r *Room, token string, msg protocol.ClientMessage) {
 	t.Helper()
 	data, err := json.Marshal(msg)

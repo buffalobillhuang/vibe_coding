@@ -1,5 +1,6 @@
 const seatNames = ["北", "东", "南", "西"];
 const seatPieceClasses = ["piece-red", "piece-green", "piece-yellow", "piece-blue"];
+const modeNames = {siguo: "四国 2v2", junqi: "军棋 1v1"};
 const rankNames = {
   0: "军棋", 1: "军旗", 2: "地雷", 3: "炸弹", 4: "工兵", 5: "排长", 6: "连长",
   7: "营长", 8: "团长", 9: "旅长", 10: "师长", 11: "军长", 12: "司令"
@@ -8,6 +9,7 @@ const cellClasses = ["off", "normal", "camp", "railroad", "hq", "frontline"];
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
+  mode: localStorage.getItem("siguo.mode") || "siguo",
   code: localStorage.getItem("siguo.code") || "",
   token: localStorage.getItem("siguo.token") || "",
   seat: Number(localStorage.getItem("siguo.seat") || 0),
@@ -21,7 +23,8 @@ const state = {
   audio: null,
   combat: null,
   log: [],
-  chat: []
+  chat: [],
+  lowTimeWarned: false
 };
 
 const app = document.querySelector("#app");
@@ -32,24 +35,27 @@ function render() {
       <section class="table">
         <div class="topbar">
           <div class="brand"><h1>四国军棋</h1><span>${statusText()}</span></div>
-          <div class="row" style="max-width:390px">
+          <div class="row" style="max-width:520px">
             <button class="primary" id="startBtn" ${canStart() ? "" : "disabled"}>开始</button>
             <button id="randBtn" ${state.room?.phase === "setup" ? "" : "disabled"}>随机</button>
             <button id="submitBtn" ${state.room?.phase === "setup" ? "" : "disabled"}>提交</button>
+            ${actionButtonsHTML()}
             <button id="soundBtn" class="toggle ${state.sound ? "on" : "off"}">声音</button>
           </div>
         </div>
+        ${requestBannerHTML()}
         <div class="board-wrap">${boardHTML()}</div>
       </section>
       <aside class="side">
         <div class="panel stack">
           <input id="name" placeholder="昵称" value="${esc(state.name)}" />
+          ${modeSwitchHTML()}
           <div class="row">
             <button id="create">创建房间</button>
             <input id="code" placeholder="房间码" value="${esc(state.code)}" />
             <button id="join">加入</button>
           </div>
-          <div class="subtle">本机地址可直接分享给同一局域网玩家。你的座位：${seatNames[state.seat] || "-"}</div>
+          <div class="subtle">本机地址可直接分享给同一局域网玩家。模式：${modeNames[currentMode()]}。你的座位：${seatNames[state.seat] || "-"}</div>
         </div>
         <div class="panel">
           <div class="seats">${seatsHTML()}</div>
@@ -64,7 +70,7 @@ function render() {
           <div class="row">
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
-            <button id="sendTeam">队伍</button>
+            ${currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
           </div>
         </div>
       </aside>
@@ -77,15 +83,17 @@ function statusText() {
   if (!state.room) return "创建或加入一个 6 位房间码";
   const phase = {lobby: "大厅", setup: "布阵", playing: "对局", ended: "结束"}[state.room.phase] || state.room.phase;
   const turn = state.room.phase === "playing" ? ` · ${seatNames[state.room.turn]}方行动` : "";
-  return `房间 ${state.code} · ${phase}${turn}`;
+  return `房间 ${state.code} · ${modeNames[currentMode()]} · ${phase}${turn}`;
 }
 
 function canStart() {
-  return state.room?.phase === "lobby" && state.host && state.room.seats?.every(s => s.name);
+  const seats = activeSeats();
+  const occupied = state.room?.seats?.filter(s => seats.includes(s.seat) && s.name) || [];
+  return state.room?.phase === "lobby" && state.host && occupied.length === seats.length;
 }
 
 function seatsHTML() {
-  const seats = state.room?.seats || [0,1,2,3].map(seat => ({seat}));
+  const seats = state.room?.seats || activeSeats().map(seat => ({seat}));
   return seats.map(s => `
     <div class="seat ${state.room?.turn === s.seat ? "current" : ""}">
       <b>${seatNames[s.seat]}</b>
@@ -94,11 +102,31 @@ function seatsHTML() {
   `).join("");
 }
 
+function modeSwitchHTML() {
+  const locked = state.room && state.room.phase !== "lobby";
+  const mode = currentMode();
+  return `<div class="mode-switch" role="group" aria-label="模式">
+    <button id="modeSiguo" class="${mode === "siguo" ? "on" : ""}" ${locked ? "disabled" : ""}>四国 2v2</button>
+    <button id="modeJunqi" class="${mode === "junqi" ? "on" : ""}" ${locked ? "disabled" : ""}>军棋 1v1</button>
+  </div>`;
+}
+
+function currentMode() {
+  return state.room?.mode || state.mode || "siguo";
+}
+
+function activeSeats() {
+  return currentMode() === "junqi" ? [0, 2] : [0, 1, 2, 3];
+}
+
 function boardHTML() {
   const cells = new Map((state.view?.Cells || state.view?.cells || []).map(c => [`${c.Pos?.Row ?? c.pos.row},${c.Pos?.Col ?? c.pos.col}`, c]));
-  let html = `<div class="board-stage">${deadTrayHTML()}<div class="board">${railOverlayHTML()}`;
-  for (let displayRow = 0; displayRow < 17; displayRow++) {
-    for (let displayCol = 0; displayCol < 17; displayCol++) {
+  const mode = currentMode();
+  const rows = mode === "junqi" ? 13 : 17;
+  const cols = mode === "junqi" ? 5 : 17;
+  let html = `<div class="board-stage ${mode === "junqi" ? "board-stage-junqi" : ""}">${deadTrayHTML()}<div class="board board-${mode}">${railOverlayHTML()}${playerTickersHTML()}`;
+  for (let displayRow = 0; displayRow < rows; displayRow++) {
+    for (let displayCol = 0; displayCol < cols; displayCol++) {
       const {row, col} = fromDisplay(displayRow, displayCol);
       const c = cells.get(`${row},${col}`);
       const piece = c?.Piece || c?.piece;
@@ -117,7 +145,7 @@ function boardHTML() {
         const label = rank === 0 ? "" : (rankNames[rank] || "?");
         html += `<div class="piece ${colorClass} ${hiddenClass} ${orientClass} ${exposedClass}" data-piece="${piece.ID ?? piece.id}" data-owner="${owner}">${label}</div>`;
       }
-      const riverLabel = centralRiverLabel(displayRow, displayCol);
+      const riverLabel = mode === "junqi" ? junqiRiverLabel(displayRow, displayCol) : centralRiverLabel(displayRow, displayCol);
       if (riverLabel) {
         html += `<div class="river-label ${riverLabel.className}" aria-hidden="true">${riverLabel.text.split("").join("<br>")}</div>`;
       }
@@ -139,6 +167,7 @@ function deadTrayHTML() {
 }
 
 function railOverlayHTML() {
+  if (currentMode() === "junqi") return junqiRailOverlayHTML();
   const line = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
   const parts = [];
   const sleepers = [];
@@ -208,7 +237,163 @@ function railOverlayHTML() {
   </svg>`;
 }
 
+function junqiRailOverlayHTML() {
+  const line = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+  const parts = [];
+  const sleepers = [];
+  const addVertical = (x, y1, y2) => {
+    parts.push(line(x, y1, x, y2));
+    for (let y = Math.ceil(y1); y <= Math.floor(y2); y += 2) sleepers.push(line(x - .16, y + .5, x + .16, y + .5));
+  };
+  const addHorizontal = (y, x1, x2) => {
+    parts.push(line(x1, y, x2, y));
+    for (let x = Math.ceil(x1); x <= Math.floor(x2); x += 2) sleepers.push(line(x + .5, y - .16, x + .5, y + .16));
+  };
+  [1.5, 5.5, 7.5, 11.5].forEach(y => addHorizontal(y, .5, 4.5));
+  [0.5, 2.5, 4.5].forEach(x => addVertical(x, 1.5, 11.5));
+  return `<svg class="rails rails-junqi" viewBox="0 0 5 13" aria-hidden="true">
+    <g class="rail-shadow">${parts.join("")}</g>
+    <g class="rail-main">${parts.join("")}</g>
+    <g class="rail-sleeper">${sleepers.join("")}</g>
+  </svg>`;
+}
+
+function playerTickersHTML() {
+  if (!state.room) return "";
+  const phase = state.room.phase;
+  if (phase !== "playing" && phase !== "ended") return "";
+  const seats = state.room.seats || [];
+  const skips = state.room.skips || {};
+  const maxSkips = state.room.maxSkips || 5;
+  const eliminated = state.room.eliminated || {};
+  const turn = state.room.turn;
+  return seats.map(s => {
+    const seat = s.seat;
+    const used = skips[seat] || 0;
+    const isElim = !!eliminated[seat];
+    const reqPending = !!state.room.request;
+    const active = phase === "playing" && seat === turn && !isElim && !reqPending;
+    const orient = `ticker-rel-${relativeSeat(seat)}`;
+    return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""}" data-seat="${seat}">
+      <div class="ticker-head">
+        <span class="ticker-seat">${seatNames[seat]}</span>
+        <span class="ticker-name">${esc(s.name || "空位")}</span>
+      </div>
+      <div class="ticker-bar"><div class="ticker-bar-fill"></div></div>
+      <div class="ticker-stats">
+        <span class="ticker-time"></span>
+        <span class="ticker-skips">跳过 ${used}/${maxSkips}</span>
+        ${isElim ? `<span class="ticker-tag">已淘汰</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function actionButtonsHTML() {
+  if (!state.room || state.room.phase !== "playing") return "";
+  const turn = state.room.turn;
+  const skips = state.room.skips || {};
+  const maxSkips = state.room.maxSkips || 5;
+  const used = skips[state.seat] || 0;
+  const remaining = Math.max(0, maxSkips - used);
+  const isElim = !!(state.room.eliminated || {})[state.seat];
+  const reqPending = !!state.room.request;
+  const myTurn = turn === state.seat;
+  return `
+    <button id="skipBtn" ${(!myTurn || used >= maxSkips || isElim || reqPending) ? "disabled" : ""}>跳过 (${remaining})</button>
+    <button id="tieBtn" ${(isElim || reqPending) ? "disabled" : ""}>求和</button>
+    <button id="surrenderBtn" ${(isElim || reqPending) ? "disabled" : ""}>投降</button>
+  `;
+}
+
+function requestBannerHTML() {
+  if (!state.room || !state.room.request) return "";
+  const req = state.room.request;
+  const label = req.kind === "tie" ? "和棋" : "投降";
+  const fromSeat = req.from;
+  const fromInfo = (state.room.seats || []).find(s => s.seat === fromSeat) || {};
+  const fromName = fromInfo.name || "";
+  const eliminated = state.room.eliminated || {};
+  const myElim = !!eliminated[state.seat];
+  const acks = req.acks || [];
+  let myAction = "";
+  let statusText = "";
+  let actorTag = "";
+  if (req.stage === "teammate") {
+    statusText = `${seatNames[fromSeat]}方 ${esc(fromName)} 请求${label}，等待队友支持`;
+    if (state.seat === seatPartner(fromSeat) && !myElim) {
+      actorTag = "需要你回应";
+      myAction = `<button id="reqAccept" class="primary">支持</button><button id="reqReject">拒绝</button>`;
+    }
+  } else {
+    statusText = `${seatNames[fromSeat]}方请求${label}，等待对方回应`;
+    if (!sameSide(state.seat, fromSeat) && !myElim) {
+      if (acks.includes(state.seat)) {
+        statusText += `（你已同意）`;
+      } else {
+        actorTag = "需要你回应";
+        myAction = `<button id="reqAccept" class="primary">同意</button><button id="reqReject">拒绝</button>`;
+      }
+    }
+  }
+  const cancelBtn = state.seat === fromSeat ? `<button id="reqCancel">撤回</button>` : "";
+  return `<div class="request-banner ${actorTag ? "request-mine" : ""}">
+    <div class="request-text">${actorTag ? `<b>${actorTag}：</b>` : ""}${statusText}</div>
+    <div class="request-actions">${myAction}${cancelBtn}</div>
+  </div>`;
+}
+
+function seatPartner(s) {
+  return [2, 3, 0, 1][s];
+}
+
+function sameTeam(a, b) {
+  return a === b || seatPartner(a) === b;
+}
+
+function sameSide(a, b) {
+  return currentMode() === "junqi" ? a === b : sameTeam(a, b);
+}
+
+function tickTimer() {
+  if (!state.room) return;
+  const phase = state.room.phase;
+  const turn = state.room.turn;
+  const deadline = state.room.moveDeadlineMs || 0;
+  const limitSec = state.room.moveLimitSec || 15;
+  const reqPending = !!state.room.request;
+  const eliminated = state.room.eliminated || {};
+  document.querySelectorAll(".player-ticker").forEach(el => {
+    const seat = Number(el.dataset.seat);
+    const bar = el.querySelector(".ticker-bar-fill");
+    const text = el.querySelector(".ticker-time");
+    if (!bar || !text) return;
+    const isActive = phase === "playing" && seat === turn && deadline > 0 && !reqPending && !eliminated[seat];
+    if (!isActive) {
+      bar.style.width = "0%";
+      bar.classList.remove("urgent");
+      text.textContent = "";
+      el.classList.remove("active");
+      return;
+    }
+    el.classList.add("active");
+    const remaining = Math.max(0, deadline - Date.now());
+    const seconds = Math.ceil(remaining / 1000);
+    const pct = Math.max(0, Math.min(100, (remaining / (limitSec * 1000)) * 100));
+    bar.style.width = pct + "%";
+    text.textContent = seconds + "s";
+    if (seconds <= 5) bar.classList.add("urgent");
+    else bar.classList.remove("urgent");
+  });
+}
+
 function homeClass(row, col) {
+  if (currentMode() === "junqi") {
+    if (row >= 2 && row <= 7 && col >= 6 && col <= 10) return "home-north home-junqi";
+    if (row >= 9 && row <= 14 && col >= 6 && col <= 10) return "home-south home-junqi";
+    if (row === 8) return "home-gap";
+    return "";
+  }
   if (row <= 5 && col >= 6 && col <= 10) return "home-north";
   if (row >= 11 && col >= 6 && col <= 10) return "home-south";
   if (col <= 5 && row >= 6 && row <= 10) return "home-west";
@@ -220,6 +405,10 @@ function homeClass(row, col) {
 function turnFrontClass(row, col) {
   if (state.room?.phase !== "playing") return "";
   const turn = state.room.turn;
+  if (currentMode() === "junqi") {
+    if ((turn === 0 || turn === 2) && row === 8 && [6, 8, 10].includes(col)) return "turn-front";
+    return "";
+  }
   if (turn === 0 && row === 6 && col >= 6 && col <= 10) return "turn-front";
   if (turn === 1 && col === 10 && row >= 6 && row <= 10) return "turn-front";
   if (turn === 2 && row === 10 && col >= 6 && col <= 10) return "turn-front";
@@ -228,6 +417,12 @@ function turnFrontClass(row, col) {
 }
 
 function visualTrackClass(row, col) {
+  if (currentMode() === "junqi") {
+    const localRow = row - 2;
+    const localCol = col - 6;
+    const onTrack = [1, 5, 7, 11].includes(localRow) || [0, 2, 4].includes(localCol);
+    return onTrack ? "track-segment track-junqi" : "";
+  }
   const inCenter = row >= 6 && row <= 10 && col >= 6 && col <= 10;
   const onTrack = [6, 8, 10].includes(row) || [6, 8, 10].includes(col);
   const isNode = [6, 8, 10].includes(row) && [6, 8, 10].includes(col);
@@ -248,11 +443,22 @@ function centralRiverLabel(displayRow, displayCol) {
   return labels[`${displayRow},${displayCol}`] || null;
 }
 
+function junqiRiverLabel(displayRow, displayCol) {
+  if (displayRow === 6 && displayCol === 1) return {text: "山界", className: "river-label-left river-label-bottom"};
+  if (displayRow === 6 && displayCol === 3) return {text: "山界", className: "river-label-right river-label-bottom"};
+  return null;
+}
+
 function relativeSeat(owner) {
+  if (currentMode() === "junqi") return owner === state.seat ? 0 : 2;
   return (owner - state.seat + 4) % 4;
 }
 
 function toDisplay(row, col) {
+  if (currentMode() === "junqi") {
+    if (state.seat === 0) return {row: 14 - row, col: 10 - col};
+    return {row: row - 2, col: col - 6};
+  }
   switch (state.seat) {
     case 0: return {row: 16 - row, col: 16 - col};
     case 1: return {row: col, col: 16 - row};
@@ -263,6 +469,10 @@ function toDisplay(row, col) {
 }
 
 function fromDisplay(row, col) {
+  if (currentMode() === "junqi") {
+    if (state.seat === 0) return {row: 14 - row, col: 10 - col};
+    return {row: row + 2, col: col + 6};
+  }
   switch (state.seat) {
     case 0: return {row: 16 - row, col: 16 - col};
     case 1: return {row: 16 - col, col: row};
@@ -280,19 +490,53 @@ function bind() {
   document.querySelector("#submitBtn").onclick = () => send({type:"setup.submit"});
   document.querySelector("#soundBtn").onclick = toggleSound;
   document.querySelector("#sendAll").onclick = () => sendChat("all");
-  document.querySelector("#sendTeam").onclick = () => sendChat("team");
+  const sendTeamBtn = document.querySelector("#sendTeam");
+  if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
+  document.querySelector("#modeSiguo").onclick = () => setMode("siguo");
+  document.querySelector("#modeJunqi").onclick = () => setMode("junqi");
+  const skipBtn = document.querySelector("#skipBtn");
+  if (skipBtn) skipBtn.onclick = () => send({type:"move.skip"});
+  const tieBtn = document.querySelector("#tieBtn");
+  if (tieBtn) tieBtn.onclick = () => confirmAction("发起求和请求？", () => send({type:"request.tie"}));
+  const surrBtn = document.querySelector("#surrenderBtn");
+  if (surrBtn) surrBtn.onclick = () => confirmAction(currentMode() === "junqi" ? "确认投降并结束本局？" : "发起投降请求？队友支持后立即结束本局。", () => send({type:"request.surrender"}));
+  const reqAccept = document.querySelector("#reqAccept");
+  if (reqAccept) reqAccept.onclick = () => send({type:"request.respond", kind: state.room?.request?.kind, accept: true});
+  const reqReject = document.querySelector("#reqReject");
+  if (reqReject) reqReject.onclick = () => send({type:"request.respond", kind: state.room?.request?.kind, accept: false});
+  const reqCancel = document.querySelector("#reqCancel");
+  if (reqCancel) reqCancel.onclick = () => send({type:"request.cancel"});
   document.querySelector("#name").oninput = e => {
     state.name = e.target.value;
     localStorage.setItem("siguo.name", state.name);
   };
   document.querySelector("#code").oninput = e => state.code = e.target.value.toUpperCase();
   document.querySelectorAll(".cell").forEach(cell => cell.onclick = () => clickCell(cell));
+  tickTimer();
+}
+
+function confirmAction(message, fn) {
+  if (typeof window !== "undefined" && window.confirm) {
+    if (!window.confirm(message)) return;
+  }
+  fn();
 }
 
 async function createRoom() {
   state.name = document.querySelector("#name").value || "玩家";
-  const res = await fetch("/api/rooms", {method:"POST", body: JSON.stringify({name: state.name})});
+  const res = await fetch("/api/rooms", {method:"POST", body: JSON.stringify({name: state.name, mode: currentMode()})});
   await acceptJoin(res);
+}
+
+function setMode(mode) {
+  if (state.room && state.room.phase !== "lobby") return;
+  state.mode = mode;
+  localStorage.setItem("siguo.mode", mode);
+  if (state.room && state.host) {
+    send({type:"room.config", mode});
+  } else {
+    render();
+  }
 }
 
 async function joinRoom() {
@@ -330,6 +574,10 @@ function connect() {
 function onMessage(msg) {
   if (msg.type === "room.state") {
     state.room = msg.room;
+    if (msg.room?.mode) {
+      state.mode = msg.room.mode;
+      localStorage.setItem("siguo.mode", state.mode);
+    }
     state.view = msg.room?.view || state.view;
   } else if (msg.type === "view") {
     state.view = msg.view;
@@ -497,4 +745,5 @@ function esc(s) {
 }
 
 render();
+setInterval(tickTimer, 200);
 if (state.code && state.token) connect();
