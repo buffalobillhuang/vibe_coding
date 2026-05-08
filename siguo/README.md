@@ -24,7 +24,7 @@ By default, the server allows at most 25 active rooms at the same time. A room c
 
 ## Deploy To An Azure VM
 
-The server can run directly on port `8080`, but the recommended public deployment is to put Caddy in front of it. Caddy listens on standard web ports and reverse proxies traffic to the Go service running inside Docker.
+The server can run directly on port `8080`, but the recommended public deployment is to put Caddy in front of it. The default cloud deployment publishes HTTP on `80` only. HTTPS on `443` is an explicit opt-in for deployments with a real domain.
 
 ### 1. Create The VM
 
@@ -32,8 +32,8 @@ The server can run directly on port `8080`, but the recommended public deploymen
 2. Add or confirm these inbound rules on the VM network security group:
 
     - `22/tcp` for SSH. Restrict this to your own IP when possible.
-    - `80/tcp` for HTTP and Let's Encrypt validation.
-    - `443/tcp` for HTTPS.
+    - `80/tcp` for HTTP.
+    - `443/tcp` only if you enable HTTPS with a domain later.
 
 3. Do not open `8080/tcp` publicly for the Caddy deployment. The Go app listens on `8080` inside Docker, and Caddy reaches it through the Docker network.
 4. SSH into the VM:
@@ -81,7 +81,7 @@ git clone https://github.com/buffalobillhuang/vibe_coding.git
 cd vibe_coding/siguo
 ```
 
-### 4. Deploy With Caddy
+### 4. Deploy HTTP With Caddy
 
 Start the application and Caddy reverse proxy:
 
@@ -108,7 +108,7 @@ cd ~/vibe_coding/siguo
 docker compose logs -f caddy
 ```
 
-With the default [deploy/Caddyfile](deploy/Caddyfile), visit:
+With the default [deploy/Caddyfile](deploy/Caddyfile), Caddy listens on host port `80`. Visit:
 
 ```text
 http://YOUR_VM_PUBLIC_IP
@@ -119,15 +119,16 @@ http://YOUR_VM_PUBLIC_IP
 Skip this section if you only want to test by public IP over HTTP.
 
 1. Point your domain's `A` record to the VM public IP.
-2. Wait for DNS to propagate.
-3. On the VM, edit [deploy/Caddyfile](deploy/Caddyfile):
+2. Open `443/tcp` on the VM network security group.
+3. Wait for DNS to propagate.
+4. On the VM, edit [deploy/Caddyfile](deploy/Caddyfile):
 
     ```sh
     cd ~/vibe_coding/siguo
     nano deploy/Caddyfile
     ```
 
-4. Replace the IP-only HTTP listener:
+5. Replace the IP-only HTTP listener:
 
     ```caddy
     :80 {
@@ -143,27 +144,29 @@ Skip this section if you only want to test by public IP over HTTP.
     }
     ```
 
-5. Restart the cloud stack:
+6. Restart the cloud stack with the HTTPS override file:
 
     ```sh
-    docker compose --profile cloud up -d
+    docker compose -f docker-compose.yml -f docker-compose.https.yml --profile cloud up -d
     ```
 
-6. Confirm Caddy obtained a certificate:
+7. Confirm Caddy obtained a certificate:
 
     ```sh
-    docker compose logs -f caddy
+    docker compose -f docker-compose.yml -f docker-compose.https.yml --profile cloud logs -f caddy
     ```
 
-7. Visit:
+8. Visit:
 
     ```text
     https://yourdomain.com
     ```
 
-Caddy requests and renews the HTTPS certificate automatically when DNS points to the VM and ports `80` and `443` are reachable.
+Caddy requests and renews the HTTPS certificate automatically when DNS points to the VM and ports `80` and `443` are reachable. After you enable HTTPS, use `docker compose -f docker-compose.yml -f docker-compose.https.yml --profile cloud ...` for future start, stop, update, and log commands for this deployment.
 
 ### 6. Stop And Start The Cloud Deployment
+
+The commands below are for the default HTTP deployment. If you enabled HTTPS, replace `docker compose --profile cloud` with `docker compose -f docker-compose.yml -f docker-compose.https.yml --profile cloud`.
 
 To stop the containers without deleting them:
 
@@ -198,6 +201,8 @@ docker compose ps
 ### 7. Update The Cloud Deployment
 
 Use these steps after new code has been pushed to GitHub.
+
+The commands below are for the default HTTP deployment. If you enabled HTTPS, replace `docker compose --profile cloud` with `docker compose -f docker-compose.yml -f docker-compose.https.yml --profile cloud`.
 
 1. SSH into the VM:
 

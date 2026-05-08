@@ -232,6 +232,10 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"viewer=1",
 		"function responseErrorText(res)",
 		"return data.error || text;",
+		"const quickChatPhrases = [",
+		"不怕神一样的对手，就怕猪一样的队友",
+		"function quickChatHTML()",
+		"function fillQuickChat(text)",
 		"function junqiSeatColor(seat)",
 		`Number(seat) === 0 ? "red" : "blue"`,
 		"function sameTeam(a, b)",
@@ -261,7 +265,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".quick-chat", ".quick-chat-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}

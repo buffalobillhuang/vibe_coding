@@ -20,6 +20,14 @@ const setupPoemLines = [
   "古今多少事",
   "都付笑谈中"
 ];
+const quickChatPhrases = [
+  "猪头",
+  "不怕神一样的对手，就怕猪一样的队友",
+  "以卵击石！。。。",
+  "固若金汤 哈哈哈",
+  "你太牛了",
+  "掐死你 ：-/"
+];
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -95,7 +103,8 @@ function render() {
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
             ${currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
-          </div>`}
+          </div>
+          ${quickChatHTML()}`}
         </div>
       </aside>
     </div>
@@ -195,6 +204,12 @@ function setupCultureHTML() {
         ${poemColumns}${poemColumns}
       </div>
     </div>
+  </div>`;
+}
+
+function quickChatHTML() {
+  return `<div class="quick-chat" aria-label="常用语">
+    ${quickChatPhrases.map(text => `<button type="button" class="quick-chat-btn" data-phrase="${esc(text)}">${esc(text)}</button>`).join("")}
   </div>`;
 }
 
@@ -697,6 +712,7 @@ function bind() {
   if (sendAllBtn) sendAllBtn.onclick = () => sendChat("all");
   const sendTeamBtn = document.querySelector("#sendTeam");
   if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
+  document.querySelectorAll(".quick-chat-btn").forEach(btn => btn.onclick = () => fillQuickChat(btn.dataset.phrase));
   document.querySelector("#modeSiguo").onclick = () => setMode("siguo");
   document.querySelector("#modeJunqi").onclick = () => setMode("junqi");
   const skipBtn = document.querySelector("#skipBtn");
@@ -983,6 +999,13 @@ function sendChat(channel) {
   const input = document.querySelector("#chatText");
   send({type:"chat.send", channel, text: input.value});
   input.value = "";
+}
+
+function fillQuickChat(text) {
+  const input = document.querySelector("#chatText");
+  if (!input) return;
+  input.value = text || "";
+  input.focus();
 }
 
 function eventText(ev) {
