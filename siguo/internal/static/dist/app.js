@@ -97,18 +97,18 @@ function render() {
           <div class="seats seats-${currentMode()}">${seatsHTML()}</div>
         </div>
         <div class="panel stack">
-          <b>战况</b>
-          <div class="log">${state.log.slice(-80).map(x => `<div class="line">${esc(x)}</div>`).join("")}</div>
-        </div>
-        <div class="panel stack">
           <b>聊天</b>
-          <div class="chat-log">${state.chat.slice(-80).map(chatLine).join("")}</div>
+          <div class="chat-log">${state.chat.slice(-80).reverse().map(chatLine).join("")}</div>
           ${state.viewer ? "" : `<div class="row">
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
             ${currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
           </div>
           ${quickChatHTML()}`}
+        </div>
+        <div class="panel stack">
+          <b>战况</b>
+          <div class="log">${state.log.slice(-80).reverse().map(x => `<div class="line">${esc(x)}</div>`).join("")}</div>
         </div>
       </aside>
     </div>

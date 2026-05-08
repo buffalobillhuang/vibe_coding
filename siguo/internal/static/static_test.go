@@ -111,6 +111,42 @@ func TestDeadTrayRendersBelowBoardAsHorizontalList(t *testing.T) {
 	}
 }
 
+func TestSideActivityPanelsShowNewestFiveFirst(t *testing.T) {
+	jsData, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(jsData)
+	chatHeader := strings.Index(js, `<b>聊天</b>`)
+	logHeader := strings.Index(js, `<b>战况</b>`)
+	if chatHeader < 0 || logHeader < 0 || chatHeader > logHeader {
+		t.Fatalf("chat panel should render above battle log panel")
+	}
+	for _, want := range []string{
+		`state.chat.slice(-80).reverse().map(chatLine)`,
+		`state.log.slice(-80).reverse().map(x =>`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("activity streams should render newest entries first; missing %q", want)
+		}
+	}
+
+	cssData, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(cssData)
+	for _, want := range []string{
+		`grid-template-rows: auto auto auto auto minmax(0, 1fr);`,
+		`max-height: calc(5 * 36px + 4 * 6px);`,
+		`min-height: 36px;`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("activity streams should show five rows before scrolling; missing %q", want)
+		}
+	}
+}
+
 func TestJunqiUsesMap3BoardAsset(t *testing.T) {
 	cssData, err := FS.ReadFile("dist/app.css")
 	if err != nil {
