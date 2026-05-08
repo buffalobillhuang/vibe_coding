@@ -262,6 +262,37 @@ func TestSiguoUsesMap8BoardAsset(t *testing.T) {
 	}
 }
 
+func TestMoveTrailRendersInBothGameModes(t *testing.T) {
+	jsData, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(jsData)
+	for _, want := range []string{
+		`board-junqi-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}`,
+		`board-siguo-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`,
+		`function moveTrailOverlayHTML()`,
+		`if (type === "move" || type === "combat") setLastMoveTrail(ev);`,
+		`x: junqiMap3Centers.x[display.col] + nudge.x`,
+		`x: siguoMap8Centers.x[display.col]`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("move trail should render for both 1:1 and 2:2 modes; missing %q", want)
+		}
+	}
+
+	cssData, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(cssData)
+	for _, want := range []string{".move-trail", "marker-end: url(\"#moveTrailArrow\")", "rgba(37, 229, 112, .96)"} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("move trail styling should be bundled for both modes; missing %q", want)
+		}
+	}
+}
+
 func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 	jsData, err := FS.ReadFile("dist/app.js")
 	if err != nil {

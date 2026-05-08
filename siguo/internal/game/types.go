@@ -228,6 +228,7 @@ type Event struct {
 	Type     EventType
 	From     Pos
 	To       Pos
+	Path     []Pos
 	Attacker PieceID
 	Defender PieceID
 	Outcome  CombatOutcome

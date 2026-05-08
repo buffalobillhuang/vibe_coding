@@ -48,6 +48,7 @@ const state = {
   setupMusicSource: 0,
   setupMusicBlocked: false,
   combat: null,
+  lastTrail: null,
   log: [],
   chat: [],
   lowTimeWarned: false,
@@ -303,8 +304,8 @@ function boardHTML() {
   const cols = mode === "junqi" ? 5 : 17;
   const stageClass = mode === "junqi" ? "board-stage board-stage-junqi" : "board-stage";
   const boardOpen = mode === "junqi"
-    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}`
-    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${playerTickersHTML()}`;
+    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}`
+    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`;
   const boardClose = mode === "junqi" ? `</div></div></div>` : `</div>`;
   let html = `<div class="${stageClass}">${boardOpen}`;
   for (let displayRow = 0; displayRow < rows; displayRow++) {
@@ -418,6 +419,45 @@ function railOverlayHTML() {
     <g class="rail-main">${parts.join("")}</g>
     <g class="rail-sleeper">${sleepers.join("")}</g>
   </svg>`;
+}
+
+function moveTrailOverlayHTML() {
+  const trail = state.lastTrail;
+  if (!trail || trail.mode !== currentMode() || !Array.isArray(trail.path) || trail.path.length < 2) return "";
+  const points = trail.path.map(trailPoint).filter(Boolean);
+  if (points.length < 2) return "";
+  const polyline = points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+  const dots = points.map((p, idx) => {
+    const cls = idx === points.length - 1 ? "move-trail-dot move-trail-dot-end" : "move-trail-dot";
+    return `<circle class="${cls}" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${idx === points.length - 1 ? "1.00" : ".72"}" />`;
+  }).join("");
+  return `<svg class="move-trail" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <marker id="moveTrailArrow" markerWidth="7" markerHeight="7" refX="5.6" refY="3.5" orient="auto" markerUnits="strokeWidth">
+        <path d="M .6 .6 L 6 3.5 L .6 6.4 Z" />
+      </marker>
+    </defs>
+    <polyline points="${polyline}" />
+    ${dots}
+  </svg>`;
+}
+
+function trailPoint(pos) {
+  const row = pos.Row ?? pos.row;
+  const col = pos.Col ?? pos.col;
+  if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
+  const display = toDisplay(row, col);
+  if (currentMode() === "junqi") {
+    const nudge = junqiBackRowNudge(row);
+    return {
+      x: junqiMap3Centers.x[display.col] + nudge.x,
+      y: junqiMap3Centers.y[display.row] + nudge.y
+    };
+  }
+  return {
+    x: siguoMap8Centers.x[display.col],
+    y: siguoMap8Centers.y[display.row]
+  };
 }
 
 function junqiRailOverlayHTML() {
@@ -1146,6 +1186,7 @@ function eventText(ev) {
 function handleEventEffect(ev) {
   const type = ev.Type || ev.type;
   const to = ev.To || ev.to;
+  if (type === "move" || type === "combat") setLastMoveTrail(ev);
   if (type === "combat") {
     const row = to?.Row ?? to?.row;
     const col = to?.Col ?? to?.col;
@@ -1160,6 +1201,14 @@ function handleEventEffect(ev) {
   } else if (type === "flagCaptured") {
     playFlag();
   }
+}
+
+function setLastMoveTrail(ev) {
+  const from = ev.From || ev.from;
+  const to = ev.To || ev.to;
+  const path = ev.Path || ev.path || [];
+  const normalized = path.length >= 2 ? path : [from, to].filter(Boolean);
+  state.lastTrail = {mode: currentMode(), path: normalized};
 }
 
 function shouldPlaySetupMusic() {

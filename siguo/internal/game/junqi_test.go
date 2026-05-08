@@ -340,6 +340,28 @@ func TestJunqiFrontRowCanAttackAcrossThreeCrossings(t *testing.T) {
 	}
 }
 
+func TestJunqiMiddleColumnRoadConnectsBackCenterStations(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		from Pos
+		to   Pos
+	}{
+		{"north center", Pos{3, 8}, Pos{4, 8}},
+		{"south center", Pos{12, 8}, Pos{13, 8}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			g := testStateForMode(t, ModeJunqi,
+				[]Piece{{ID: 1, Owner: North, Rank: Bomb, Alive: true}},
+				map[PieceID]Pos{1: tt.from},
+				North,
+			)
+			if !hasMove(LegalMoves(g, 1), tt.to) {
+				t.Fatalf("expected center road move from %v to %v", tt.from, tt.to)
+			}
+		})
+	}
+}
+
 func TestJunqiMiddleRailDoesNotRunIntoCentralCamp(t *testing.T) {
 	g := testStateForMode(t, ModeJunqi,
 		[]Piece{{ID: 1, Owner: North, Rank: Commander, Alive: true}},
@@ -349,9 +371,6 @@ func TestJunqiMiddleRailDoesNotRunIntoCentralCamp(t *testing.T) {
 	moves := LegalMoves(g, 1)
 	if hasMove(moves, Pos{7, 8}) {
 		t.Fatalf("middle rail should not run through the central camp lattice")
-	}
-	if hasMove(moves, Pos{3, 8}) {
-		t.Fatalf("middle rail should not have a central vertical stub")
 	}
 }
 

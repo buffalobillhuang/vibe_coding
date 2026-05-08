@@ -21,9 +21,11 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 	if !ok || from != move.From {
 		return nil, nil, ErrInvalidMove
 	}
-	if !IsLegalMove(state, move) {
+	legal, ok := legalMoveFor(state, move)
+	if !ok {
 		return nil, nil, ErrInvalidMove
 	}
+	eventPath := eventPathForMove(legal)
 
 	next := state.Clone()
 	var events []Event
@@ -31,7 +33,7 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 	defender, occupied := next.PieceAt(move.To)
 	if !occupied {
 		next.movePiece(move.PieceID, move.To)
-		events = append(events, Event{Type: EventMove, From: move.From, To: move.To, Attacker: move.PieceID})
+		events = append(events, Event{Type: EventMove, From: move.From, To: move.To, Path: eventPath, Attacker: move.PieceID})
 	} else {
 		result := ResolveCombat(piece, defender)
 
@@ -52,6 +54,7 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 			Type:     EventCombat,
 			From:     move.From,
 			To:       move.To,
+			Path:     eventPath,
 			Attacker: piece.ID,
 			Defender: defender.ID,
 			Outcome:  result.Outcome,
@@ -88,6 +91,22 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 
 	next.History = append(next.History, events...)
 	return next, events, nil
+}
+
+func legalMoveFor(state *GameState, move Move) (Move, bool) {
+	for _, legal := range LegalMoves(state, move.PieceID) {
+		if legal.To == move.To {
+			return legal, true
+		}
+	}
+	return Move{}, false
+}
+
+func eventPathForMove(move Move) []Pos {
+	if len(move.Path) > 0 {
+		return append([]Pos(nil), move.Path...)
+	}
+	return []Pos{move.From, move.To}
 }
 
 func losingTeam(winners []Seat) []Seat {

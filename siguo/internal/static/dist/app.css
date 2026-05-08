@@ -800,6 +800,38 @@ input {
   stroke: rgba(92, 18, 16, .72);
   stroke-width: 1px;
 }
+.move-trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  overflow: visible;
+}
+.move-trail polyline {
+  fill: none;
+  stroke: rgba(37, 229, 112, .96);
+  stroke-width: 3.2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  marker-end: url("#moveTrailArrow");
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(18, 128, 60, .75));
+}
+.move-trail marker path {
+  fill: rgba(37, 229, 112, .98);
+}
+.move-trail-dot {
+  fill: rgba(18, 100, 46, .92);
+  stroke: rgba(192, 255, 216, .94);
+  stroke-width: .28px;
+  vector-effect: non-scaling-stroke;
+}
+.move-trail-dot-end {
+  fill: rgba(37, 229, 112, .98);
+  stroke-width: .36px;
+}
 .camp::before {
   content: "";
   width: 62%;

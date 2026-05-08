@@ -220,22 +220,12 @@ func junqiRoadAdjacency(from Pos) []Pos {
 	}
 	for _, d := range orthogonalDirs {
 		to := Pos{from.Row + d.Row, from.Col + d.Col}
-		if !junqiRemovedCenterVertical(from, to) {
-			add(to)
-		}
+		add(to)
 	}
 	for _, to := range junqiCampDiagonalNeighbors(from) {
 		add(to)
 	}
 	return out
-}
-
-func junqiRemovedCenterVertical(a, b Pos) bool {
-	if a.Col != 8 || b.Col != 8 {
-		return false
-	}
-	return (a.Row == 3 && b.Row == 4) || (a.Row == 4 && b.Row == 3) ||
-		(a.Row == 12 && b.Row == 13) || (a.Row == 13 && b.Row == 12)
 }
 
 func junqiCampDiagonalNeighbors(from Pos) []Pos {

@@ -22,6 +22,9 @@ func TestApplyMoveAttackerWinsCombatAndAdvancesTurn(t *testing.T) {
 	if len(events) != 1 || events[0].Type != EventCombat || events[0].Outcome != AttackerWins {
 		t.Fatalf("events = %#v, want attacker combat win", events)
 	}
+	if !samePath(events[0].Path, []Pos{{1, 8}, {2, 8}}) {
+		t.Fatalf("combat event path = %v, want [{1 8} {2 8}]", events[0].Path)
+	}
 	if _, ok := next.positionOf(2); ok {
 		t.Fatal("defender still has a position")
 	}
@@ -30,6 +33,25 @@ func TestApplyMoveAttackerWinsCombatAndAdvancesTurn(t *testing.T) {
 	}
 	if next.Turn != West {
 		t.Fatalf("turn = %s, want West", next.Turn)
+	}
+}
+
+func TestApplyMoveIncludesEngineerRailPathInEvent(t *testing.T) {
+	g := testState(t,
+		[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+		map[PieceID]Pos{1: {1, 6}},
+		North,
+	)
+
+	_, events, err := ApplyMove(g, Move{PieceID: 1, From: Pos{1, 6}, To: Pos{10, 12}})
+	if err != nil {
+		t.Fatalf("ApplyMove() error = %v", err)
+	}
+	if len(events) != 1 || events[0].Type != EventMove {
+		t.Fatalf("events = %#v, want move event", events)
+	}
+	if len(events[0].Path) < 3 || events[0].Path[0] != (Pos{1, 6}) || events[0].Path[len(events[0].Path)-1] != (Pos{10, 12}) {
+		t.Fatalf("engineer event path = %v, want multi-hop path from {1 6} to {10 12}", events[0].Path)
 	}
 }
 
@@ -230,4 +252,16 @@ func pieceAt(view ClientView, pos Pos) *ClientPiece {
 		}
 	}
 	return nil
+}
+
+func samePath(got, want []Pos) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
