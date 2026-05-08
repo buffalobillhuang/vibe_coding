@@ -173,6 +173,17 @@ func TestJunqiUsesMap3BoardAsset(t *testing.T) {
 	if _, err := FS.ReadFile("dist/map3.jpg"); err != nil {
 		t.Fatalf("ReadFile(dist/map3.jpg) error = %v", err)
 	}
+	data, err := FS.ReadFile("dist/map3.jpg")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/map3.jpg) error = %v", err)
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("DecodeConfig(dist/map3.jpg) error = %v", err)
+	}
+	if cfg.Width != 864 || cfg.Height != 1184 {
+		t.Fatalf("dist/map3.jpg size = %dx%d, want regenerated 864x1184 board", cfg.Width, cfg.Height)
+	}
 }
 
 func TestSiguoUsesMap8BoardAsset(t *testing.T) {
