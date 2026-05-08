@@ -225,10 +225,24 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"function victoryHTML()",
 		"观战室",
 		"function watchRoomPanelHTML()",
+		"function inviteLinkButtonHTML()",
+		"function inviteURL(code)",
+		"function shareOrigin()",
+		"siguo.shareOrigin",
+		"请输入可分享的服务器地址",
+		"http://YOUR_LAN_IP:8080",
+		"未设置可分享的服务器地址",
+		"function copyInviteLink(code)",
+		"function joinFromInvite(code)",
+		"function offerViewerAfterJoinFailure(code, message)",
+		"邀请链接已复制",
+		"?${param}=${encodeURIComponent(code)}",
+		"玩家座位已满，可选择观战",
+		"joinOfferView",
 		"function connectViewer(code)",
 		"function viewerRoomStatus(code)",
 		"观战席已满，请稍后再试",
-		"?watch=${encodeURIComponent(code)}",
+		"function shareURL(param, code)",
 		"viewer=1",
 		"function responseErrorText(res)",
 		"return data.error || text;",
@@ -265,7 +279,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".quick-chat", ".quick-chat-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}

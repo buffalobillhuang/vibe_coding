@@ -52,7 +52,8 @@ const state = {
   lowTimeWarned: false,
   viewer: false,
   watchOpen: false,
-  watchRooms: []
+  watchRooms: [],
+  joinOffer: null
 };
 
 const app = document.querySelector("#app");
@@ -65,6 +66,7 @@ function render() {
           <div class="brand"><h1>四国军棋</h1><span>${statusText()}</span></div>
           <div class="row" style="max-width:720px">
             <button id="watchBtn">观战室</button>
+            ${inviteLinkButtonHTML()}
             ${viewerLinkButtonHTML()}
             <button class="primary" id="startBtn" ${canStart() ? "" : "disabled"}>开始</button>
             <button id="randBtn" ${!state.viewer && state.room?.phase === "setup" ? "" : "disabled"}>随机</button>
@@ -74,6 +76,7 @@ function render() {
           </div>
         </div>
         ${watchRoomPanelHTML()}
+        ${joinOfferHTML()}
         ${requestBannerHTML()}
         <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
@@ -216,6 +219,22 @@ function quickChatHTML() {
 function viewerLinkButtonHTML() {
   if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
   return `<button id="viewerLinkBtn">观战链接</button>`;
+}
+
+function inviteLinkButtonHTML() {
+  if (state.viewer || !state.room || !state.code || !["lobby", "setup", "playing"].includes(state.room.phase)) return "";
+  return `<button id="inviteLinkBtn">邀请链接</button>`;
+}
+
+function joinOfferHTML() {
+  const offer = state.joinOffer;
+  if (!offer) return "";
+  const viewerAction = offer.canView ? `<button id="joinOfferView" class="primary">观战</button>` : "";
+  const viewerText = offer.canView ? "可作为观众进入。" : "当前没有可用观战席。";
+  return `<div class="panel join-offer">
+    <div><b>无法加入 ${esc(offer.code)}</b><span>${esc(offer.message)} ${viewerText}</span></div>
+    <div><button id="joinOfferClose">关闭</button>${viewerAction}</div>
+  </div>`;
 }
 
 function watchRoomPanelHTML() {
@@ -689,8 +708,14 @@ function bind() {
   document.querySelector("#create").onclick = createRoom;
   document.querySelector("#join").onclick = joinRoom;
   document.querySelector("#watchBtn").onclick = openWatchRoom;
+  const inviteLinkBtn = document.querySelector("#inviteLinkBtn");
+  if (inviteLinkBtn) inviteLinkBtn.onclick = () => copyInviteLink(state.code);
   const viewerLinkBtn = document.querySelector("#viewerLinkBtn");
   if (viewerLinkBtn) viewerLinkBtn.onclick = () => copyViewerLink(state.code);
+  const joinOfferView = document.querySelector("#joinOfferView");
+  if (joinOfferView) joinOfferView.onclick = () => connectViewer(state.joinOffer?.code);
+  const joinOfferClose = document.querySelector("#joinOfferClose");
+  if (joinOfferClose) joinOfferClose.onclick = () => { state.joinOffer = null; render(); };
   const watchRefreshBtn = document.querySelector("#watchRefreshBtn");
   if (watchRefreshBtn) watchRefreshBtn.onclick = refreshWatchRooms;
   const watchCloseBtn = document.querySelector("#watchCloseBtn");
@@ -787,11 +812,49 @@ async function refreshWatchRooms() {
 }
 
 function viewerURL(code) {
-  return `${location.origin}${location.pathname}?watch=${encodeURIComponent(code)}`;
+  return shareURL("watch", code);
+}
+
+function inviteURL(code) {
+  return shareURL("join", code);
+}
+
+function shareURL(param, code) {
+  const origin = shareOrigin();
+  if (!origin) return "";
+  return `${origin}${location.pathname}?${param}=${encodeURIComponent(code)}`;
+}
+
+function shareOrigin() {
+  if (!["localhost", "127.0.0.1", "::1"].includes(location.hostname)) return location.origin;
+  const saved = localStorage.getItem("siguo.shareOrigin") || "";
+  const input = window.prompt("请输入可分享的服务器地址：云端80端口用 http://YOUR_VM_PUBLIC_IP，本机/LAN测试8080用 http://YOUR_LAN_IP:8080", saved || "http://");
+  if (!input) return "";
+  const origin = input.replace(/\/$/, "");
+  localStorage.setItem("siguo.shareOrigin", origin);
+  return origin;
+}
+
+async function copyInviteLink(code) {
+  const url = inviteURL(code);
+  if (!url) {
+    log("未设置可分享的服务器地址");
+    return;
+  }
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+    log("邀请链接已复制");
+    return;
+  }
+  log(`邀请链接：${url}`);
 }
 
 async function copyViewerLink(code) {
   const url = viewerURL(code);
+  if (!url) {
+    log("未设置可分享的服务器地址");
+    return;
+  }
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(url);
     log("观战链接已复制");
@@ -825,11 +888,12 @@ function leaveEndedRoom(shouldRender = true) {
   state.host = false;
   state.viewer = false;
   state.watchOpen = false;
+  state.joinOffer = null;
   state.selected = null;
   state.combat = null;
   localStorage.removeItem("siguo.code");
   localStorage.removeItem("siguo.token");
-  if (location.search.includes("watch=")) history.replaceState(null, "", location.pathname);
+  if (location.search.includes("watch=") || location.search.includes("join=")) history.replaceState(null, "", location.pathname);
   if (shouldRender) render();
 }
 
@@ -840,9 +904,23 @@ async function joinRoom() {
   await acceptJoin(res);
 }
 
-async function acceptJoin(res) {
+async function joinFromInvite(code) {
+  code = String(code || "").toUpperCase();
+  if (!code) return;
+  state.name = state.name || "玩家";
+  state.code = code;
+  const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
+  await acceptJoin(res, {inviteCode: code});
+}
+
+async function acceptJoin(res, opts = {}) {
   if (!res.ok) {
-    log(`错误：${await responseErrorText(res)}`);
+    const message = await responseErrorText(res);
+    if (opts.inviteCode) {
+      await offerViewerAfterJoinFailure(opts.inviteCode, message);
+      return;
+    }
+    log(`错误：${message}`);
     return;
   }
   const data = await res.json();
@@ -852,10 +930,19 @@ async function acceptJoin(res) {
   state.host = data.host;
   state.viewer = false;
   state.watchOpen = false;
+  state.joinOffer = null;
   localStorage.setItem("siguo.code", state.code);
   localStorage.setItem("siguo.token", state.token);
   localStorage.setItem("siguo.seat", String(state.seat));
+  history.replaceState(null, "", location.pathname);
   connect();
+}
+
+async function offerViewerAfterJoinFailure(code, message) {
+  const status = await viewerRoomStatus(code);
+  state.joinOffer = {code, message, canView: status.ok};
+  log(status.ok ? "玩家座位已满，可选择观战" : `错误：${message}`);
+  render();
 }
 
 async function responseErrorText(res) {
@@ -891,6 +978,7 @@ async function connectViewer(code) {
   }
   state.viewer = true;
   state.watchOpen = false;
+  state.joinOffer = null;
   state.code = code;
   state.token = "";
   state.host = false;
@@ -1155,9 +1243,13 @@ function esc(s) {
 
 render();
 setInterval(tickTimer, 200);
-const initialWatchCode = new URLSearchParams(location.search).get("watch");
+const initialParams = new URLSearchParams(location.search);
+const initialWatchCode = initialParams.get("watch");
+const initialJoinCode = initialParams.get("join");
 if (initialWatchCode) {
   connectViewer(initialWatchCode);
+} else if (initialJoinCode) {
+  joinFromInvite(initialJoinCode);
 } else if (state.code && state.token) {
   connect();
 }

@@ -202,6 +202,33 @@ input {
   overflow-wrap: anywhere;
 }
 
+.join-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.join-offer > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.join-offer span {
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.join-offer > div:last-child {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .quick-chat {
   display: flex;
   flex-wrap: wrap;

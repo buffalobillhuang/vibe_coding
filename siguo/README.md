@@ -10,6 +10,8 @@ A self-contained browser 四国军棋 server. The current build is a playable de
 
 Open `http://localhost:8080`, create a room, and share the six-character room code with three other players.
 
+If you copy an invitation link while running locally, use a reachable LAN address with the local port, such as `http://YOUR_LAN_IP:8080`. For the Azure VM Caddy deployment on port `80`, use `http://YOUR_VM_PUBLIC_IP` without `:80`.
+
 ## Build And Test
 
 ```sh
