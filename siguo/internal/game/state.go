@@ -199,3 +199,36 @@ func (g *GameState) checkWinner() []Seat {
 		return nil
 	}
 }
+
+func (g *GameState) noMoveWinner() []Seat {
+	if g.Mode != ModeJunqi {
+		return nil
+	}
+	northCanMove := g.seatHasLegalMove(North)
+	southCanMove := g.seatHasLegalMove(South)
+	switch {
+	case !northCanMove && !southCanMove:
+		return []Seat{}
+	case !northCanMove:
+		return []Seat{South}
+	case !southCanMove:
+		return []Seat{North}
+	default:
+		return nil
+	}
+}
+
+func (g *GameState) seatHasLegalMove(seat Seat) bool {
+	if g.Eliminated[seat] {
+		return false
+	}
+	for id, piece := range g.Pieces {
+		if piece.Owner != seat || !piece.Alive || !piece.Rank.Movable() {
+			continue
+		}
+		if len(LegalMoves(g, id)) > 0 {
+			return true
+		}
+	}
+	return false
+}

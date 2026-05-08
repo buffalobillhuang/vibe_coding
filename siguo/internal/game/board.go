@@ -9,6 +9,7 @@ const (
 	Railroad
 	HQ
 	Frontline
+	Mountain
 )
 
 type Cell struct {
@@ -25,7 +26,7 @@ func init() {
 	defaultBoard = buildBoard()
 	junqiBoard = buildJunqiBoard()
 	railroadAdj = buildRailroadAdjacency(defaultBoard)
-	junqiRailroadAdj = buildOrthogonalRailroadAdjacency(junqiBoard)
+	junqiRailroadAdj = buildJunqiRailroadAdjacency(junqiBoard)
 }
 
 func BoardCell(pos Pos) Cell {
@@ -93,6 +94,9 @@ func buildBoard() [BoardSize][BoardSize]Cell {
 			b[row][col] = Cell{Type: Frontline}
 		}
 	}
+	for _, p := range siguoMountainCells() {
+		b[p.Row][p.Col] = Cell{Type: Mountain}
+	}
 
 	return b
 }
@@ -124,17 +128,13 @@ func buildJunqiBoard() [BoardSize][BoardSize]Cell {
 			home = seatPtr(South)
 		}
 		t := Railroad
-		if p.Row == 8 && p.Col == 8 {
+		if p.Row == 8 {
 			t = Frontline
 		}
 		b[p.Row][p.Col] = Cell{Type: t, Home: home}
 	}
-	for _, col := range []int{6, 8, 10} {
-		t := Railroad
-		if col == 8 {
-			t = Frontline
-		}
-		b[8][col] = Cell{Type: t}
+	for _, p := range []Pos{{8, 7}, {8, 9}} {
+		b[p.Row][p.Col] = Cell{Type: Mountain}
 	}
 	for _, p := range junqiCampCells(North) {
 		b[p.Row][p.Col] = Cell{Type: Camp, Home: seatPtr(North)}
@@ -239,6 +239,10 @@ func junqiHQCells(seat Seat) []Pos {
 	}
 }
 
+func siguoMountainCells() []Pos {
+	return []Pos{{7, 7}, {7, 9}, {9, 7}, {9, 9}}
+}
+
 func junqiRailCells() []Pos {
 	seen := map[Pos]bool{}
 	add := func(p Pos) {
@@ -249,10 +253,16 @@ func junqiRailCells() []Pos {
 			add(Pos{row, col})
 		}
 	}
-	for _, col := range []int{6, 8, 10} {
+	for _, col := range []int{6, 10} {
 		for row := 3; row <= 13; row++ {
+			if row == 8 {
+				continue
+			}
 			add(Pos{row, col})
 		}
+	}
+	for _, col := range []int{6, 8, 10} {
+		add(Pos{8, col})
 	}
 	out := make([]Pos, 0, len(seen))
 	for p := range seen {
@@ -306,6 +316,10 @@ func buildOrthogonalRailroadAdjacency(b [BoardSize][BoardSize]Cell) map[Pos][]Po
 		}
 	}
 	return adj
+}
+
+func buildJunqiRailroadAdjacency(b [BoardSize][BoardSize]Cell) map[Pos][]Pos {
+	return buildOrthogonalRailroadAdjacency(b)
 }
 
 func addRailEdge(b [BoardSize][BoardSize]Cell, adj map[Pos][]Pos, a, c Pos) {

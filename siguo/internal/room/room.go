@@ -417,6 +417,11 @@ func (r *Room) handleSkipLocked(player *Player, refSeq int64) {
 		return
 	}
 	r.skips[player.Seat]++
+	if r.skips[player.Seat] >= protocol.MaxSkipsPerPlayer {
+		r.broadcastNoticeLocked(player.Seat, "跳过次数用尽，判负")
+		r.surrenderTeamLocked(player.Seat)
+		return
+	}
 	r.advanceTurnAfterSkipLocked()
 	r.broadcastNoticeLocked(player.Seat, "跳过回合")
 	r.broadcastRoomAndViewsLocked()
@@ -450,7 +455,7 @@ func (r *Room) onTurnTimeoutLocked(seat game.Seat) {
 	}
 	if r.skips[seat] >= protocol.MaxSkipsPerPlayer {
 		r.broadcastNoticeLocked(seat, "超时且跳过次数用尽，自动认输")
-		r.eliminateSeatLocked(seat)
+		r.surrenderTeamLocked(seat)
 		return
 	}
 	r.skips[seat]++

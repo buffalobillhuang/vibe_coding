@@ -153,8 +153,8 @@ func TestViewForHidesTeammateAndOpponentRanks(t *testing.T) {
 	if seen[2] != Unknown {
 		t.Fatalf("teammate rank = %s, want Unknown", seen[2])
 	}
-	if seen[3] != Unknown {
-		t.Fatalf("revealed opponent rank = %s, want Unknown", seen[3])
+	if seen[3] != Engineer {
+		t.Fatalf("revealed opponent rank = %s, want Engineer", seen[3])
 	}
 }
 

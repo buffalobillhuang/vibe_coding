@@ -1,6 +1,9 @@
 package game
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 const BoardSize = 17
 
@@ -56,6 +59,10 @@ func (s Seat) String() string {
 	default:
 		return fmt.Sprintf("Seat(%d)", s)
 	}
+}
+
+func (s Seat) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Itoa(int(s))), nil
 }
 
 func (s Seat) Partner() Seat {

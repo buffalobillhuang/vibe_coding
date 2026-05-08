@@ -5,7 +5,21 @@ const rankNames = {
   0: "军棋", 1: "军旗", 2: "地雷", 3: "炸弹", 4: "工兵", 5: "排长", 6: "连长",
   7: "营长", 8: "团长", 9: "旅长", 10: "师长", 11: "军长", 12: "司令"
 };
-const cellClasses = ["off", "normal", "camp", "railroad", "hq", "frontline"];
+const cellClasses = ["off", "normal", "camp", "railroad", "hq", "frontline", "mountain"];
+const setupPoemTitle = "临江仙";
+const setupPoemAuthor = "明·杨慎";
+const setupPoemLines = [
+  "滚滚长江东逝水",
+  "浪花淘尽英雄",
+  "是非成败转头空",
+  "青山依旧在",
+  "几度夕阳红",
+  "白发渔樵江渚上",
+  "惯看秋月春风",
+  "一壶浊酒喜相逢",
+  "古今多少事",
+  "都付笑谈中"
+];
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -21,6 +35,9 @@ const state = {
   selected: null,
   sound: localStorage.getItem("siguo.sound") !== "off",
   audio: null,
+  setupMusic: null,
+  setupMusicSource: 0,
+  setupMusicBlocked: false,
   combat: null,
   log: [],
   chat: [],
@@ -44,7 +61,7 @@ function render() {
           </div>
         </div>
         ${requestBannerHTML()}
-        <div class="board-wrap">${boardHTML()}</div>
+        <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
       <aside class="side">
         <div class="panel stack">
@@ -57,8 +74,9 @@ function render() {
           </div>
           <div class="subtle">本机地址可直接分享给同一局域网玩家。模式：${modeNames[currentMode()]}。你的座位：${seatNames[state.seat] || "-"}</div>
         </div>
+        ${setupCultureHTML()}
         <div class="panel">
-          <div class="seats">${seatsHTML()}</div>
+          <div class="seats seats-${currentMode()}">${seatsHTML()}</div>
         </div>
         <div class="panel stack">
           <b>战况</b>
@@ -77,6 +95,7 @@ function render() {
     </div>
   `;
   bind();
+  syncSetupMusic();
 }
 
 function statusText() {
@@ -92,10 +111,86 @@ function canStart() {
   return state.room?.phase === "lobby" && state.host && occupied.length === seats.length;
 }
 
+function winnerSeats() {
+  return state.room?.winner || state.room?.Winner || state.view?.Winner || state.view?.winner || [];
+}
+
+function junqiSeatColor(seat) {
+  return Number(seat) === 0 ? "red" : "blue";
+}
+
+function winnerLabel() {
+  const winners = winnerSeats();
+  if (!winners.length) return "和棋";
+  if (currentMode() === "junqi") return junqiSeatColor(winners[0]) === "red" ? "红方获胜" : "蓝方获胜";
+  return sameTeam(winners[0], 0) ? "北南联军获胜" : "东西联军获胜";
+}
+
+function victorySubline() {
+  if (currentMode() === "junqi") return "一局定鼎";
+  return "联军得胜";
+}
+
+function victoryToneClass() {
+  const winners = winnerSeats();
+  if (!winners.length) return "victory-neutral";
+  if (currentMode() === "junqi") return `victory-${junqiSeatColor(winners[0])}`;
+  return sameTeam(winners[0], 0) ? "victory-ns" : "victory-ew";
+}
+
+function victoryHTML() {
+  if (state.room?.phase !== "ended") return "";
+  const winners = winnerSeats();
+  if (!winners.length) {
+    return `<div class="victory-layer victory-draw"><div class="victory-panel"><span class="victory-kicker">终局</span><b>和棋</b>${victoryActionsHTML()}</div></div>`;
+  }
+  const petals = Array.from({length: 18}, (_, i) => `<span class="petal p${i + 1}"></span>`).join("");
+  return `<div class="victory-layer ${victoryToneClass()}" aria-live="polite">
+    <div class="victory-panel">
+      ${petals}
+      <div class="beauty beauty-left"></div>
+      <div class="beauty beauty-right"></div>
+      <span class="victory-kicker">军旗已定</span>
+      <b>${winnerLabel()}</b>
+      <small>${victorySubline()} · 另一方获胜</small>
+      ${victoryActionsHTML()}
+    </div>
+  </div>`;
+}
+
+function victoryActionsHTML() {
+  return `<div class="victory-actions">
+    <button id="restartRoomBtn" class="primary">再开一局</button>
+    <button id="leaveRoomBtn">返回大厅</button>
+  </div>`;
+}
+
+function setupCultureHTML() {
+  if (state.room?.phase !== "setup") return "";
+  const musicText = !state.sound ? "静音" : state.setupMusicBlocked ? "启乐" : "清音";
+  const modeLine = currentMode() === "junqi" ? "一枰对坐，静候开局" : "四方列阵，联军待发";
+  const poemColumns = [
+    `<span class="poem-title">${setupPoemTitle}</span>`,
+    `<span class="poem-author">${setupPoemAuthor}</span>`,
+    ...setupPoemLines.map(line => `<span>${line}</span>`)
+  ].join("");
+  return `<div class="panel culture-panel">
+    <div class="culture-head">
+      <div><b>临江仙</b><span>杨慎 · ${modeLine}</span></div>
+      <button id="setupMusicBtn" class="music-chip">${musicText}</button>
+    </div>
+    <div class="poem-window">
+      <div class="poem-scroll">
+        ${poemColumns}${poemColumns}
+      </div>
+    </div>
+  </div>`;
+}
+
 function seatsHTML() {
   const seats = state.room?.seats || activeSeats().map(seat => ({seat}));
   return seats.map(s => `
-    <div class="seat ${state.room?.turn === s.seat ? "current" : ""}">
+    <div class="seat ${state.room?.turn === s.seat ? "current" : ""}" data-seat="${s.seat}">
       <b>${seatNames[s.seat]}</b>
       <span class="subtle">${s.name ? esc(s.name) : "空位"} ${s.host ? "房主" : ""} ${s.ready ? "已提交" : ""}</span>
     </div>
@@ -103,7 +198,7 @@ function seatsHTML() {
 }
 
 function modeSwitchHTML() {
-  const locked = state.room && state.room.phase !== "lobby";
+  const locked = state.room && !["lobby", "ended"].includes(state.room.phase);
   const mode = currentMode();
   return `<div class="mode-switch" role="group" aria-label="模式">
     <button id="modeSiguo" class="${mode === "siguo" ? "on" : ""}" ${locked ? "disabled" : ""}>四国 2v2</button>
@@ -124,7 +219,12 @@ function boardHTML() {
   const mode = currentMode();
   const rows = mode === "junqi" ? 13 : 17;
   const cols = mode === "junqi" ? 5 : 17;
-  let html = `<div class="board-stage ${mode === "junqi" ? "board-stage-junqi" : ""}">${deadTrayHTML()}<div class="board board-${mode}">${railOverlayHTML()}${playerTickersHTML()}`;
+  const stageClass = mode === "junqi" ? "board-stage board-stage-junqi" : "board-stage";
+  const boardOpen = mode === "junqi"
+    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}`
+    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${playerTickersHTML()}`;
+  const boardClose = mode === "junqi" ? `</div></div></div>` : `</div>`;
+  let html = `<div class="${stageClass}">${boardOpen}`;
   for (let displayRow = 0; displayRow < rows; displayRow++) {
     for (let displayCol = 0; displayCol < cols; displayCol++) {
       const {row, col} = fromDisplay(displayRow, displayCol);
@@ -133,13 +233,14 @@ function boardHTML() {
       const type = c?.Type ?? c?.type ?? 0;
       const selected = state.selected && state.selected.row === row && state.selected.col === col;
       const combat = state.combat && state.combat.row === row && state.combat.col === col && Date.now() < state.combat.until;
-      html += `<div class="cell ${cellClasses[type] || "off"} ${homeClass(row, col)} ${visualTrackClass(row, col)} ${centralNodeClass(row, col)} ${turnFrontClass(row, col)} ${piece ? "occupied" : ""} ${selected ? "selected" : ""} ${combat ? "combat-hit" : ""}" data-row="${row}" data-col="${col}">`;
+      const cellStyle = mode === "junqi" ? junqiCellStyle(displayRow, displayCol, row) : siguoCellStyle(displayRow, displayCol);
+      html += `<div class="cell ${cellClasses[type] || "off"} ${homeClass(row, col)} ${visualTrackClass(row, col)} ${turnFrontClass(row, col)} ${piece ? "occupied" : ""} ${selected ? "selected" : ""} ${combat ? "combat-hit" : ""}" data-row="${row}" data-col="${col}" ${cellStyle}>`;
       if (piece) {
         const owner = piece.Owner ?? piece.owner;
         const rank = piece.Rank ?? piece.rank;
         const exposed = piece.Exposed ?? piece.exposed;
-        const colorClass = seatPieceClasses[owner] || "piece-blue";
-        const exposedClass = exposed && rank === 1 ? "flag-exposed" : "";
+        const colorClass = pieceColorClass(owner);
+        const exposedClass = exposed && rank !== 0 ? "flag-exposed" : "";
         const hiddenClass = rank === 0 ? "piece-hidden" : "";
         const orientClass = `piece-rel-${relativeSeat(owner)}`;
         const label = rank === 0 ? "" : (rankNames[rank] || "?");
@@ -152,7 +253,7 @@ function boardHTML() {
       html += `</div>`;
     }
   }
-  return html + `</div></div>`;
+  return html + `${boardClose}${deadTrayHTML()}</div>`;
 }
 
 function deadTrayHTML() {
@@ -160,7 +261,7 @@ function deadTrayHTML() {
   const items = dead.map(piece => {
     const owner = piece.Owner ?? piece.owner;
     const rank = piece.Rank ?? piece.rank;
-    const colorClass = seatPieceClasses[owner] || "piece-blue";
+    const colorClass = pieceColorClass(owner);
     return `<div class="dead-piece ${colorClass}">${rankNames[rank] || "?"}</div>`;
   }).join("");
   return `<div class="dead-tray" aria-label="阵亡棋子"><b>阵亡</b><div class="dead-list">${items || `<span class="subtle">无</span>`}</div></div>`;
@@ -250,41 +351,57 @@ function junqiRailOverlayHTML() {
     for (let x = Math.ceil(x1); x <= Math.floor(x2); x += 2) sleepers.push(line(x + .5, y - .16, x + .5, y + .16));
   };
   [1.5, 5.5, 7.5, 11.5].forEach(y => addHorizontal(y, .5, 4.5));
-  [0.5, 2.5, 4.5].forEach(x => addVertical(x, 1.5, 11.5));
-  return `<svg class="rails rails-junqi" viewBox="0 0 5 13" aria-hidden="true">
+  [0.5, 4.5].forEach(x => addVertical(x, 1.5, 11.5));
+  addVertical(2.5, 5.5, 7.5);
+  return `<svg class="rails rails-junqi" viewBox="0 0 5 13" preserveAspectRatio="none" aria-hidden="true">
     <g class="rail-shadow">${parts.join("")}</g>
     <g class="rail-main">${parts.join("")}</g>
     <g class="rail-sleeper">${sleepers.join("")}</g>
   </svg>`;
 }
 
+function pieceColorClass(owner) {
+  if (currentMode() === "junqi") return `piece-${junqiSeatColor(owner)}`;
+  return seatPieceClasses[owner] || "piece-blue";
+}
+
 function playerTickersHTML() {
   if (!state.room) return "";
   const phase = state.room.phase;
-  if (phase !== "playing" && phase !== "ended") return "";
+  if (!["lobby", "setup", "playing", "ended"].includes(phase)) return "";
   const seats = state.room.seats || [];
   const skips = state.room.skips || {};
   const maxSkips = state.room.maxSkips || 5;
   const eliminated = state.room.eliminated || {};
   const turn = state.room.turn;
+  const isJunqi = currentMode() === "junqi";
+  const moveLimit = state.room.moveLimitSec || 15;
   return seats.map(s => {
     const seat = s.seat;
     const used = skips[seat] || 0;
     const isElim = !!eliminated[seat];
     const reqPending = !!state.room.request;
     const active = phase === "playing" && seat === turn && !isElim && !reqPending;
+    const canRequest = isJunqi && phase === "playing" && seat === state.seat && !isElim && !reqPending;
+    const canSkip = isJunqi && phase === "playing" && seat === state.seat && seat === turn && used < maxSkips && !isElim && !reqPending;
     const orient = `ticker-rel-${relativeSeat(seat)}`;
     return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""}" data-seat="${seat}">
       <div class="ticker-head">
         <span class="ticker-seat">${seatNames[seat]}</span>
+        <span class="ticker-turn-logo" aria-label="行动方"></span>
         <span class="ticker-name">${esc(s.name || "空位")}</span>
       </div>
       <div class="ticker-bar"><div class="ticker-bar-fill"></div></div>
       <div class="ticker-stats">
-        <span class="ticker-time"></span>
-        <span class="ticker-skips">跳过 ${used}/${maxSkips}</span>
+        <span class="ticker-time">${isJunqi ? `${moveLimit}s` : ""}</span>
+        ${isJunqi ? "" : `<span class="ticker-skips">跳过 ${used}/${maxSkips}</span>`}
         ${isElim ? `<span class="ticker-tag">已淘汰</span>` : ""}
       </div>
+      ${isJunqi ? `<div class="ticker-actions">
+        <button class="ticker-skip" data-seat="${seat}" ${canSkip ? "" : "disabled"}>跳过 ${used}/${maxSkips}</button>
+        <button class="ticker-surrender" data-seat="${seat}" ${canRequest ? "" : "disabled"}>投降</button>
+        <button class="ticker-peace" data-seat="${seat}" ${canRequest ? "" : "disabled"}>求和</button>
+      </div>` : ""}
     </div>`;
   }).join("");
 }
@@ -344,11 +461,13 @@ function requestBannerHTML() {
 }
 
 function seatPartner(s) {
-  return [2, 3, 0, 1][s];
+  return [2, 3, 0, 1][Number(s)];
 }
 
 function sameTeam(a, b) {
-  return a === b || seatPartner(a) === b;
+  const seatA = Number(a);
+  const seatB = Number(b);
+  return seatA === seatB || seatPartner(seatA) === seatB;
 }
 
 function sameSide(a, b) {
@@ -372,7 +491,7 @@ function tickTimer() {
     if (!isActive) {
       bar.style.width = "0%";
       bar.classList.remove("urgent");
-      text.textContent = "";
+      text.textContent = currentMode() === "junqi" ? `${limitSec}s` : "";
       el.classList.remove("active");
       return;
     }
@@ -406,7 +525,6 @@ function turnFrontClass(row, col) {
   if (state.room?.phase !== "playing") return "";
   const turn = state.room.turn;
   if (currentMode() === "junqi") {
-    if ((turn === 0 || turn === 2) && row === 8 && [6, 8, 10].includes(col)) return "turn-front";
     return "";
   }
   if (turn === 0 && row === 6 && col >= 6 && col <= 10) return "turn-front";
@@ -420,17 +538,13 @@ function visualTrackClass(row, col) {
   if (currentMode() === "junqi") {
     const localRow = row - 2;
     const localCol = col - 6;
-    const onTrack = [1, 5, 7, 11].includes(localRow) || [0, 2, 4].includes(localCol);
+    const onTrack = [1, 5, 7, 11].includes(localRow) || [0, 4].includes(localCol) || (localRow === 6 && [0, 2, 4].includes(localCol));
     return onTrack ? "track-segment track-junqi" : "";
   }
   const inCenter = row >= 6 && row <= 10 && col >= 6 && col <= 10;
   const onTrack = [6, 8, 10].includes(row) || [6, 8, 10].includes(col);
   const isNode = [6, 8, 10].includes(row) && [6, 8, 10].includes(col);
   return inCenter && onTrack && !isNode ? "track-segment" : "";
-}
-
-function centralNodeClass(row, col) {
-  return [6, 8, 10].includes(row) && [6, 8, 10].includes(col) ? "central-node" : "";
 }
 
 function centralRiverLabel(displayRow, displayCol) {
@@ -447,6 +561,46 @@ function junqiRiverLabel(displayRow, displayCol) {
   if (displayRow === 6 && displayCol === 1) return {text: "山界", className: "river-label-left river-label-bottom"};
   if (displayRow === 6 && displayCol === 3) return {text: "山界", className: "river-label-right river-label-bottom"};
   return null;
+}
+
+const siguoMap8Centers = {
+  x: [3.50, 8.13, 12.88, 17.75, 22.63, 27.50, 35.25, 42.75, 50.13, 57.38, 64.63, 72.50, 77.13, 81.75, 86.63, 91.38, 96.13],
+  y: [4.13, 8.50, 13.13, 17.63, 22.00, 26.75, 34.88, 42.38, 50.00, 57.75, 65.00, 72.75, 77.13, 81.75, 86.38, 90.88, 95.75]
+};
+
+function siguoCellStyle(displayRow, displayCol) {
+  const w = 5.2;
+  const h = 4.6;
+  const x = siguoMap8Centers.x[displayCol] - w / 2;
+  const y = siguoMap8Centers.y[displayRow] - h / 2;
+  return `style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"`;
+}
+
+const junqiMap3Centers = {
+  x: [13.35, 31.48, 50.00, 67.94, 86.57],
+  y: [8.45, 15.10, 21.75, 28.38, 35.03, 41.72, 50.08, 58.11, 64.78, 71.45, 78.04, 84.65, 91.55]
+};
+
+function junqiCellStyle(displayRow, displayCol, row) {
+  const w = 9.1;
+  const h = 4.0;
+  const nudge = junqiBackRowNudge(row);
+  const x = junqiMap3Centers.x[displayCol] + nudge.x - w / 2;
+  const y = junqiMap3Centers.y[displayRow] + nudge.y - h / 2;
+  return `style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"`;
+}
+
+function junqiBackRowNudge(row) {
+  const rotate = state.seat === 0 ? -1 : 1;
+  if (row >= 2 && row <= 4) {
+    const amount = [0.70, 0.55, 0.40][row - 2];
+    return {x: rotate * amount, y: -rotate * amount};
+  }
+  if (row >= 13 && row <= 14) {
+    const amount = [0.55, 0.70][row - 13];
+    return {x: -rotate * amount, y: rotate * amount};
+  }
+  return {x: 0, y: 0};
 }
 
 function relativeSeat(owner) {
@@ -489,6 +643,13 @@ function bind() {
   document.querySelector("#randBtn").onclick = () => send({type:"setup.randomize"});
   document.querySelector("#submitBtn").onclick = () => send({type:"setup.submit"});
   document.querySelector("#soundBtn").onclick = toggleSound;
+  const setupMusicBtn = document.querySelector("#setupMusicBtn");
+  if (setupMusicBtn) setupMusicBtn.onclick = () => {
+    state.sound = !state.sound;
+    localStorage.setItem("siguo.sound", state.sound ? "on" : "off");
+    syncSetupMusic();
+    render();
+  };
   document.querySelector("#sendAll").onclick = () => sendChat("all");
   const sendTeamBtn = document.querySelector("#sendTeam");
   if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
@@ -500,12 +661,31 @@ function bind() {
   if (tieBtn) tieBtn.onclick = () => confirmAction("发起求和请求？", () => send({type:"request.tie"}));
   const surrBtn = document.querySelector("#surrenderBtn");
   if (surrBtn) surrBtn.onclick = () => confirmAction(currentMode() === "junqi" ? "确认投降并结束本局？" : "发起投降请求？队友支持后立即结束本局。", () => send({type:"request.surrender"}));
+  document.querySelectorAll(".ticker-skip").forEach(btn => btn.onclick = e => {
+    e.stopPropagation();
+    if (btn.disabled || Number(btn.dataset.seat) !== state.seat) return;
+    send({type:"move.skip"});
+  });
+  document.querySelectorAll(".ticker-surrender").forEach(btn => btn.onclick = e => {
+    e.stopPropagation();
+    if (btn.disabled || Number(btn.dataset.seat) !== state.seat) return;
+    confirmAction("确认投降并结束本局？", () => send({type:"request.surrender"}));
+  });
+  document.querySelectorAll(".ticker-peace").forEach(btn => btn.onclick = e => {
+    e.stopPropagation();
+    if (btn.disabled || Number(btn.dataset.seat) !== state.seat) return;
+    confirmAction("发起求和请求？", () => send({type:"request.tie"}));
+  });
   const reqAccept = document.querySelector("#reqAccept");
   if (reqAccept) reqAccept.onclick = () => send({type:"request.respond", kind: state.room?.request?.kind, accept: true});
   const reqReject = document.querySelector("#reqReject");
   if (reqReject) reqReject.onclick = () => send({type:"request.respond", kind: state.room?.request?.kind, accept: false});
   const reqCancel = document.querySelector("#reqCancel");
   if (reqCancel) reqCancel.onclick = () => send({type:"request.cancel"});
+  const restartRoomBtn = document.querySelector("#restartRoomBtn");
+  if (restartRoomBtn) restartRoomBtn.onclick = createRoom;
+  const leaveRoomBtn = document.querySelector("#leaveRoomBtn");
+  if (leaveRoomBtn) leaveRoomBtn.onclick = leaveEndedRoom;
   document.querySelector("#name").oninput = e => {
     state.name = e.target.value;
     localStorage.setItem("siguo.name", state.name);
@@ -529,6 +709,7 @@ async function createRoom() {
 }
 
 function setMode(mode) {
+  if (state.room?.phase === "ended") leaveEndedRoom(false);
   if (state.room && state.room.phase !== "lobby") return;
   state.mode = mode;
   localStorage.setItem("siguo.mode", mode);
@@ -537,6 +718,24 @@ function setMode(mode) {
   } else {
     render();
   }
+}
+
+function leaveEndedRoom(shouldRender = true) {
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.close();
+  }
+  state.ws = null;
+  state.room = null;
+  state.view = null;
+  state.code = "";
+  state.token = "";
+  state.host = false;
+  state.selected = null;
+  state.combat = null;
+  localStorage.removeItem("siguo.code");
+  localStorage.removeItem("siguo.token");
+  if (shouldRender) render();
 }
 
 async function joinRoom() {
@@ -676,11 +875,58 @@ function handleEventEffect(ev) {
   }
 }
 
+function shouldPlaySetupMusic() {
+  return state.sound && state.room?.phase === "setup";
+}
+
+function ensureSetupMusic() {
+  if (state.setupMusic) return state.setupMusic;
+  const audio = new Audio("/song.mp3");
+  audio.loop = true;
+  audio.volume = 0.32;
+  audio.addEventListener("error", () => {
+    if (state.setupMusicSource === 0) {
+      state.setupMusicSource = 1;
+      audio.src = "/setup-music.ogg";
+      if (shouldPlaySetupMusic()) playSetupMusic(true);
+    }
+  });
+  state.setupMusic = audio;
+  return audio;
+}
+
+function syncSetupMusic() {
+  if (shouldPlaySetupMusic()) {
+    playSetupMusic(false);
+    return;
+  }
+  if (state.setupMusic) {
+    state.setupMusic.pause();
+    state.setupMusic.currentTime = 0;
+  }
+  state.setupMusicBlocked = false;
+}
+
+function playSetupMusic(force) {
+  if (!shouldPlaySetupMusic() && !force) return;
+  const audio = ensureSetupMusic();
+  audio.play().then(() => {
+    state.setupMusicBlocked = false;
+  }).catch(() => {
+    state.setupMusicBlocked = true;
+  });
+}
+
 function toggleSound() {
   state.sound = !state.sound;
   localStorage.setItem("siguo.sound", state.sound ? "on" : "off");
   ensureAudio();
-  if (state.sound) playMove();
+  if (state.sound) {
+    playMove();
+    syncSetupMusic();
+  } else {
+    syncSetupMusic();
+  }
   render();
 }
 

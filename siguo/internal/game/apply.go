@@ -69,10 +69,18 @@ func ApplyMove(state *GameState, move Move) (*GameState, []Event, error) {
 		}
 	}
 
+	if moved, ok := next.Pieces[piece.ID]; ok && moved.Alive && moved.Rank == Engineer && next.boardCell(move.To).Type == Mountain {
+		next.Revealed[piece.ID] = true
+	}
+
 	if winners := next.checkWinner(); winners != nil {
 		next.Phase = Ended
 		next.Winner = winners
 		events = append(events, Event{Type: EventTeamEliminated, Losers: losingSide(next.Mode, winners), Winners: winners})
+		events = append(events, Event{Type: EventGameEnded, Winners: winners})
+	} else if winners := next.noMoveWinner(); winners != nil {
+		next.Phase = Ended
+		next.Winner = winners
 		events = append(events, Event{Type: EventGameEnded, Winners: winners})
 	} else {
 		next.advanceTurn()

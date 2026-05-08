@@ -136,6 +136,19 @@ func TestSkipBeyondLimitRejected(t *testing.T) {
 	}
 }
 
+func TestFifthManualSkipConcedesSide(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	r.skips[game.North] = protocol.MaxSkipsPerPlayer - 1
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "move.skip", Seq: 1})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended after fifth skip", r.phase)
+	}
+	if len(r.state.Winner) != 2 || !(r.state.Winner[0].SameTeam(game.East) && r.state.Winner[1].SameTeam(game.East)) {
+		t.Fatalf("winner = %v, want EW team", r.state.Winner)
+	}
+}
+
 func TestTieRequestRequiresTeammateThenRivals(t *testing.T) {
 	r := newPlayingRoom(t)
 	north := r.seats[game.North]
@@ -241,6 +254,44 @@ func TestJunqiConcedeGivesOpponentSingleWinner(t *testing.T) {
 	}
 }
 
+func TestJunqiBlueConcedeGivesRedWinner(t *testing.T) {
+	r := newPlayingJunqiRoom(t)
+	south := r.seats[game.South]
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "concede", Seq: 1})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended", r.phase)
+	}
+	if len(r.state.Winner) != 1 || r.state.Winner[0] != game.North {
+		t.Fatalf("winner = %v, want North", r.state.Winner)
+	}
+}
+
+func TestJunqiBlueSurrenderRequestGivesRedWinner(t *testing.T) {
+	r := newPlayingJunqiRoom(t)
+	south := r.seats[game.South]
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "request.surrender", Seq: 1})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended", r.phase)
+	}
+	if len(r.state.Winner) != 1 || r.state.Winner[0] != game.North {
+		t.Fatalf("winner = %v, want North", r.state.Winner)
+	}
+}
+
+func TestJunqiBlueFifthSkipGivesRedWinner(t *testing.T) {
+	r := newPlayingJunqiRoom(t)
+	south := r.seats[game.South]
+	r.state.Turn = game.South
+	r.skips[game.South] = protocol.MaxSkipsPerPlayer - 1
+	sendTestMessage(t, r, south.Token, protocol.ClientMessage{Type: "move.skip", Seq: 1})
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended", r.phase)
+	}
+	if len(r.state.Winner) != 1 || r.state.Winner[0] != game.North {
+		t.Fatalf("winner = %v, want North", r.state.Winner)
+	}
+}
+
 func TestSkipBlockedWhileRequestPending(t *testing.T) {
 	r := newPlayingRoom(t)
 	north := r.seats[game.North]
@@ -260,8 +311,11 @@ func TestAutoTimeoutAfterMaxSkipsConcedes(t *testing.T) {
 	r.mu.Lock()
 	r.onTurnTimeoutLocked(game.North)
 	r.mu.Unlock()
-	if !r.state.Eliminated[game.North] {
-		t.Fatalf("north should be eliminated after timeout at max skips")
+	if r.phase != PhaseEnded {
+		t.Fatalf("phase = %s, want ended after timeout at max skips", r.phase)
+	}
+	if len(r.state.Winner) != 2 || !(r.state.Winner[0].SameTeam(game.East) && r.state.Winner[1].SameTeam(game.East)) {
+		t.Fatalf("winner = %v, want EW team", r.state.Winner)
 	}
 }
 

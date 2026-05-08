@@ -63,9 +63,9 @@ func (g *GameState) ViewFor(viewer Seat) ClientView {
 					Owner:   piece.Owner,
 					Rank:    Unknown,
 					Alive:   piece.Alive,
-					Exposed: piece.Owner == viewer && g.Revealed[piece.ID],
+					Exposed: g.Revealed[piece.ID],
 				}
-				if piece.Owner == viewer || (piece.Rank == Flag && g.Revealed[piece.ID]) {
+				if piece.Owner == viewer || g.Revealed[piece.ID] {
 					cp.Rank = piece.Rank
 				}
 				out.Piece = &cp

@@ -1,364 +1,0 @@
-Claude Code is Anthropic’s terminal-based AI coding agent that helps developers build features, debug code, navigate codebases, and automate tasks directly in your project directory. It excels at agentic workflows, and a popular best practice is spec-driven development: create detailed specifications (specs) first to guide the AI, reducing errors, rework, and constant approvals during implementation.
-This approach turns Claude Code into a reliable teammate by defining clear requirements, design, and tasks upfront.
-Getting Started with Claude Code
-1. Subscribe and Install You need a Claude subscription (Pro, Max, Team, or Enterprise) or API access. Install via terminal:
-    * macOS/Linux/WSL: curl -fsSL https://claude.ai/install.sh | bash
-    * Windows PowerShell: irm https://claude.ai/install.ps1 | iex It auto-updates on native installs.
-2. Run It Navigate to your project: cd your-project-directory Start the agent: claude It will prompt for login on first use. The AI now has full context of your codebase and can read/edit files, run commands, etc.
-How to Use Claude Code to Write Specs (Spec-Driven Workflow)
-The key is to separate planning (spec writing) from execution (coding). This is widely recommended in the community for better results. Here’s a practical step-by-step workflow, drawing from common practices:
-1. Set Up a Specs Structure (Optional but Recommended) Create a dedicated folder for organization: mkdir specs
-2. cd specs
-3. touch steering.md requirements.md design.md tasks.md
-4. 
-    * steering.md: High-level project goals, tech standards, and constraints.
-    * requirements.md: User stories, functional/non-functional needs, edge cases.
-    * design.md: Architecture, data models, APIs, diagrams.
-    * tasks.md: Breakdown into small, testable steps.
-5. Start with Steering and Requirements In the running claude session, prompt clearly:
-    * “Create a detailed specification for [describe your feature, e.g., ‘a user authentication system with email/password and OAuth’]. Start by writing high-level steering in specs/steering.md, then detailed requirements in specs/requirements.md including user stories, acceptance criteria (use EARS format where possible: ‘When [trigger], the system shall [action]’), edge cases, and non-functional requirements.” Use a stronger model like Claude Opus (if available) for spec creation: switch via /model command if supported, or specify in prompts. Iterate: Review the output, ask clarifying questions, and refine until the spec fully captures what you want.
-6. Generate Design and Architecture Once requirements are approved:
-    * “Based on specs/requirements.md, create a technical design in specs/design.md. Include architecture overview, data models, API contracts (e.g., OpenAPI YAML if relevant), key components, and any diagrams in Mermaid format.” This creates a blueprint the AI can follow precisely.
-7. Break Down into Tasks
-    * “Read specs/design.md and break the implementation into small, actionable tasks in specs/tasks.md. Each task should be testable, mapped to specific files, with checkboxes, dependencies, and success criteria.” This creates a clear roadmap.
-8. Review and Approve Specs Read the generated Markdown files carefully. This is your main review gate—much easier than reviewing code diffs later. Make edits manually or ask Claude Code to revise: “Update specs/requirements.md to include [your feedback].”
-9. Proceed to Implementation (Optional Next Step) Once specs are solid: Switch to a faster model like Sonnet if needed, then:
-    * “Implement the feature according to the approved specs in specs/*.md. Work through tasks.md one by one in auto mode.” The AI will now code with minimal interruptions because it has clear contracts.
-Tips for Better Specs
-* Be explicit and structured in prompts → Use templates like EARS (Easy Approach to Requirements Syntax) for clear acceptance criteria.
-* Use sub-agents if available → Some advanced setups create specialized agents (e.g., one for requirements, one for QA) via config files.
-* Machine-readable contracts → Include things like JSON schemas or OpenAPI specs to constrain the AI.
-* Custom commands → Advanced users add slash commands (in .claude/commands/) for one-click spec generation phases.
-* Iterate upfront → Spend more time refining specs—it pays off in faster, higher-quality implementation.
-This workflow (requirements → design → tasks → implementation) is praised for making Claude Code more reliable and efficient. For more advanced setups (e.g., custom workflows or Spec Kit integrations), check community resources like GitHub repos or Anthropic’s docs at code.claude.com.
-If you have a specific feature or project in mind, describe it and I can help craft a starting prompt!
-
-——
-Using Figma to Create UI/UX Designs
-Figma is a collaborative, web-based design tool ideal for UI/UX work. It’s free to start (with paid plans for advanced features), runs in the browser or desktop app, and supports real-time teamwork.
-Basic Workflow for UI/UX Design
-1. Sign Up and Create a File Go to figma.com, sign up (free), and create a new design file (File > New > Design file).
-2. Set Up Frames (Artboards) Use the Frame tool (F key) to create screens (e.g., mobile: 375x812px, desktop: 1440x1024px). Frames act as canvases for your UI.
-3. Build the Interface
-    * Shapes and Elements: Use Rectangle (R), Text (T), Pen (P) tools for basic elements.
-    * Auto Layout: Select elements > Enable Auto Layout (Shift+A) for responsive stacking, padding, and spacing—essential for modern UI.
-    * Components: Create reusable elements (e.g., buttons). Select a group > Create Component (Ctrl+Alt+K). Make variants (e.g., primary/secondary button states) for flexibility.
-    * Styles and Tokens: Define colors, text styles, and effects as reusable styles/variables (right-click > Add to styles). In paid plans, use Variables for design tokens (e.g., –primary-color).
-4. Add Interactivity (Prototyping) Switch to Prototype tab. Drag connections between frames, set triggers (e.g., on click), animations (e.g., smart animate), and overlays for modals. Preview with the Play button.
-5. Handoff Prep (Dev Mode) Switch to Dev Mode (top-right toggle). Inspect elements for CSS properties, spacing, exports. This is crucial for accurate code generation.
-Best Practices
-* Use consistent naming (e.g., “Button/Primary”).
-* Organize layers and pages logically.
-* Leverage plugins: Search in Community (e.g., Unsplash for images, Iconify for icons).
-* Test responsiveness with constraints and auto-layout.
-This creates pixel-perfect, interactive prototypes ready for implementation.
-Using Figma Designs in Claude Code
-Claude Code excels at translating Figma designs into production code via the Figma MCP (Model Control Protocol) integration. This allows Claude to directly access your Figma file’s structure, tokens, components, layouts, and specs—no manual copying needed. It’s far more accurate than screenshots.
-Requirements
-* Claude Code installed (latest version).
-* Figma desktop app (browser version doesn’t support MCP server).
-* A Figma account with access to the design file (Dev or Full seat recommended).
-Step-by-Step Setup for MCP Integration
-1. Enable MCP Server in Figma
-    * Open the Figma desktop app (update to latest).
-    * Open your design file.
-    * Go to Figma menu (top-left) > Preferences > Enable “Dev Mode MCP Server”.
-    * The server runs locally (no data leaves your machine).
-2. Connect Claude Code to Figma MCP
-    * In your terminal: claude mcp add --transport sse figma-dev-mode-mcp-server http://127.0.0.1:3845/sse
-    * 
-    * Verify: claude mcp list
-    *  You should see the Figma connection listed.
-3. Implement UI in Claude Code
-    * Navigate to your project directory: cd your-project
-    * Start Claude Code: claude
-    * In the session, reference your design:
-        * By Link: Copy a Figma frame/page link (Share > Copy link). Prompt: “Implement this login screen in React with Tailwind CSS: [paste Figma link here]. Match the layout, colors, typography, and spacing exactly using the design tokens.”
-        * By Selection: In Figma, select a frame/component > Prompt Claude: “Generate code for my current Figma selection as a reusable React component.”
-    * Claude will analyze the design (via MCP) and generate matching code, including:
-        * Accurate styles from tokens.
-        * Component structure.
-        * Responsive layouts from auto-layout.
-Tips for Best Results
-* Organize Your Figma File: Use variables for tokens, master components with variants, auto-layout everywhere, clear naming—Claude extracts these directly.
-* Prompt Effectively: Specify tech stack (e.g., “Next.js App Router, TypeScript, Tailwind v4”), existing patterns (“Follow our component library in src/components”), and scope (“Only the header component”).
-* Iterate: Generate one screen/component at a time, review diffs, then refine (“Add hover states matching the prototype”).
-* Combine with Specs: Export Dev Mode specs to a markdown file and reference in your specs/ folder for spec-driven development.
-Alternative: Using Screenshots (No MCP Setup Needed)
-If MCP isn’t feasible:
-* Take screenshots of Figma frames (macOS: Cmd+Shift+4).
-* In Claude Code terminal: Paste with Ctrl+V (Mac) or drag-and-drop the image file.
-* Prompt: “Implement this UI design [pasted image] in HTML/CSS/React…” This works well but is less precise than MCP (no direct token access).
-This workflow (Figma design → MCP → Claude Code implementation) drastically speeds up turning mocks into clean, production-ready UI code. Many developers report 75%+ time savings on UI tasks.
-If you share a specific Figma link (or describe your stack/project), I can help craft a prompt!
-
-—-
-
-Using Multi-Agent Workflows in Claude Code with Subagents
-Claude Code supports multi-agent workflows through subagents—specialized, isolated AI instances that act like team members with defined roles, tools, and permissions. This is ideal for simulating a full team: Product Manager (PM), UI/UX Designer, Developer (Dev), Tester (QA/Test), and Operations (Ops/DevOps).
-Subagents run in parallel or sequentially, preserve the main conversation’s context (while isolating their own), and can be delegated tasks automatically or explicitly. They are more powerful than forked skills for persistent roles, as they support custom models, tool restrictions, and background execution.
-This setup turns Claude Code into a collaborative “AI team” for end-to-end project development: planning → design → implementation → testing → deployment.
-Step-by-Step Setup
-1. Prepare Your Project Navigate to your project directory and start Claude Code: cd your-project
-2. claude
-3.  Create a project-specific agents folder (git-friendly for team sharing): mkdir -p .claude/agents
-4. 
-5. Create Subagents Each subagent is a Markdown file in .claude/agents/ (or ~/.claude/agents/ for personal reuse). Name files like pm.md, designer.md, etc. Structure: YAML frontmatter + Markdown body (role instructions). Example Subagents for Your Roles
-    * Product Manager (pm.md) – Orchestrator: Handles requirements, planning, delegation. ---
-    * name: pm
-    * description: Product Manager expert. Gather requirements, write user stories, create specs and tasks, track progress, and delegate to other subagents (designer, dev, tester, ops). Use proactively for planning.
-    * model: opus  # Stronger reasoning for planning
-    * tools: [Read, Edit, Bash, Grep, Glob]  # Full access for docs/tasks
-    * permissionMode: acceptEdits
-    * ---
-    * You are an expert Product Manager. Focus on:
-    * - Translating ideas into detailed requirements (specs/requirements.md).
-    * - Breaking into tasks (specs/tasks.md).
-    * - Delegating: Suggest using designer for UI, dev for code, tester for QA, ops for deployment.
-    * - Prioritize, handle scope changes, write progress reports.
-    * Always reference existing specs/ folder and collaborate with the team.
-    * 
-    * UI/UX Designer (designer.md) – Creates designs, integrates with Figma. ---
-    * name: designer
-    * description: UI/UX Designer specialist. Create wireframes, design systems, user flows. Use Figma MCP if connected. Generate specs/design.md with Mermaid diagrams or detailed descriptions.
-    * model: sonnet
-    * tools: [Read, Edit]  # No code execution needed
-    * ---
-    * You are a professional UI/UX Designer. Tasks:
-    * - Read requirements from specs/.
-    * - Output detailed designs in specs/design.md (text descriptions, colors, typography, components).
-    * - Use Mermaid for wireframes/flowcharts.
-    * - If Figma MCP is connected, reference selections/links for accuracy.
-    * - Suggest improvements for accessibility, responsiveness.
-    * Focus on handoff-ready outputs for the dev subagent.
-    * 
-    * Developer (dev.md) – Implements code. ---
-    * name: dev
-    * description: Senior Developer. Implement features from specs/design.md. Write clean, tested code following project standards.
-    * model: sonnet
-    * tools: [Read, Edit, Bash, Grep, Glob]
-    * permissionMode: plan  # Require plan approval for safety
-    * ---
-    * You are an expert full-stack developer. Strictly:
-    * - Follow specs/requirements.md, design.md, and tasks.md.
-    * - Implement one task at a time.
-    * - Write production-ready code with comments.
-    * - Reference existing codebase patterns.
-    * - After implementation, suggest testing with the tester subagent.
-    * 
-    * Tester (tester.md) – QA and testing. ---
-    * name: tester
-    * description: QA Engineer. Write and run tests, find bugs, verify against requirements.
-    * model: haiku  # Faster for repetitive tasks
-    * tools: [Read, Edit, Bash]  # Run test commands
-    * ---
-    * You are a thorough QA Tester. Responsibilities:
-    * - Generate unit/integration/e2e tests.
-    * - Run existing tests and report failures.
-    * - Verify implementations match specs (functional, edge cases, performance).
-    * - Report bugs clearly and suggest fixes to dev.
-    * 
-    * Ops (ops.md) – Deployment and operations. ---
-    * name: ops
-    * description: DevOps Engineer. Handle CI/CD, deployment, monitoring, infrastructure.
-    * model: sonnet
-    * tools: [Read, Edit, Bash]
-    * permissionMode: dontAsk  # Careful with side effects
-    * ---
-    * You are a DevOps expert. Focus on:
-    * - Creating Dockerfiles, CI configs (GitHub Actions), cloud setups.
-    * - Deployment scripts, monitoring.
-    * - Security best practices.
-    * - Only act after dev/tester approval.
-    * 
-6. Restart or Reload Exit and restart claude for subagents to load. Check with /agents (interactive menu to list/manage).
-7. Orchestrate the Workflow
-    * Delegation:
-        * Automatic: Claude decides based on descriptions (e.g., “Plan this feature” → pm subagent).
-        * Explicit: Prompt “Use the pm subagent to gather requirements for [feature].”
-        * Parallel: “Research UI patterns with designer, implement backend with dev, and plan tests with tester in parallel.” (Use background mode: Ctrl+B or ask to “run in background”).
-    * Typical Flow:
-        1. Start with PM: “Use pm to create requirements for [project idea].” → Updates specs/.
-        2. Designer: “Use designer based on latest requirements.” → Creates design.md (or references Figma via MCP).
-        3. Dev: “Use dev to implement the login screen from design.md.”
-        4. Tester: “Use tester to write and run tests for the new feature.”
-        5. Ops: “Use ops to set up deployment pipeline.”
-        * Resume: “Continue with the dev subagent on task X.”
-    * Make PM the Lead Orchestrator: Prompt the main agent to always route through pm for coordination.
-Tips for Success
-* Tool Restrictions: Limit dangerous tools (e.g., no Bash for designer) to prevent errors.
-* Combine with Previous Features: Use your specs/ folder for shared state. Connect Figma MCP globally for designer to read real designs.
-* Parallelism: Up to ~10 subagents comfortably; monitor for token costs.
-* Best Practices: Start small (PM + Dev), add roles gradually. Use read-only for planning agents. Version control .claude/agents/.
-* Community Templates: Search for shared agent collections (e.g., GitHub repos like claude-code-subagents-collection) or plugins via marketplace.
-This multi-agent setup makes projects faster and more structured—many users report building full apps with minimal manual coding. Describe your project/feature, and I can help refine prompts or subagent configs!
-
-—-
-Fixing Permission Prompts for Running Pytest in Claude Code
-Claude Code intentionally asks for permission before running Bash commands like pytest (or python -m pytest) as a safety feature. This prevents accidental side effects, data loss, or unintended executions. However, during iterative testing (e.g., with your tester subagent), these prompts can become repetitive—especially since test commands often vary slightly (different files, args), and “don’t ask again” doesn’t always persist perfectly for patterns like pytest.
-Here are the best ways to reduce or eliminate these prompts, from safest to most autonomous. Start with the top options.
-1. Best & Safest: Enable Sandbox Mode (Recommended for Testing)
-Anthropic’s sandboxing (introduced ~late 2025) isolates Bash commands in a secure container with filesystem/network limits. It auto-approves safe commands (like running tests) while blocking dangerous ones, reducing prompts by ~84% in practice without full risk.
-* Start Claude Code with: claude --sandbox
-* 
-* For your project: cd your-project && claude --sandbox
-* This works great with multi-agents—your tester subagent can run pytest freely inside the sandbox.
-* Bonus: Combine with other flags if needed, e.g., resume sessions.
-This is the modern, secure way for autonomous testing workflows.
-2. Configure Allowed Tools/Permissions for Pytest Patterns
-Use fine-grained rules to auto-approve test runs without global skips.
-* In-session: Type /permissions or /allowed-tools to open the menu. Add rules like:
-    * Bash(pytest*)
-    * Bash(python -m pytest*)
-    * Bash(uv run pytest*) (if using uv) These use pattern matching for common test commands.
-* Persistent config: Edit your settings (per-user or project):
-    * Global: ~/.claude/settings.json or via UI.
-    * Project: .claude/managed-settings.json (git-shareable). Add to “allow” array:
-* {
-*   "permissions": {
-*     "allow": [
-*       "Bash(pytest*)",
-*       "Bash(python:*test*)",
-*       "Bash(*pytest*)"
-*     ]
-*   }
-* }
-*  Restart Claude Code to apply.
-* When prompted next time, choose “Always allow this pattern” if offered.
-This targets testing specifically—safe and precise.
-3. Update Your Tester Subagent for More Autonomy
-Since you’re using multi-agents, tweak .claude/agents/tester.md to reduce prompts:
----
-name: tester
-description: QA Engineer. Write and run tests, find bugs, verify against requirements.
-model: haiku
-tools: [Read, Edit, Bash]
-permissionMode: dontAsk  # Or "acceptEdits" for edits only; "dontAsk" skips most prompts
----
-# Rest of your instructions...
-* Options for permissionMode:
-    * default: Standard prompts.
-    * plan: Requires plan approval first.
-    * acceptEdits: Auto-approve edits, prompt for Bash.
-    * dontAsk: Skip prompts (use cautiously).
-Restart Claude Code. Delegate explicitly: “Use tester subagent to run all tests without interruptions.”
-4. Last Resort: Skip All Permissions (YOLO Mode)
-For fully uninterrupted runs (e.g., long test-fix loops):
-* Start with: claude --dangerously-skip-permissions
-* 
-* Powerful for trusted projects, but risky—Claude can run any command without checks (potential data loss if misled).
-Use only in sandboxes/VMs/containers, or combine with strict allowed-tools whitelists.
-Tips
-* Test in a branch or isolated env first.
-* If using the tester subagent heavily: Prompt the main agent “Run all tests autonomously with the tester subagent.”
-* Bugs with pytest persistence are reported; patterns/allowlists usually fix it.
-* Check latest docs: code.claude.com/docs/en/permissions or /settings in-session.
-This should make your testing flow smooth! If you share your tester.md config or exact prompt error, I can refine further.
-
-—-
-What is CLAUDE.md?
-CLAUDE.md (often stylized as Claude.md or CLAUDE.md) is a special markdown file used in Claude Code (Anthropic’s agentic coding environment, available via Claude.ai, the Claude desktop app, or integrated tools). When placed in your project’s root directory, Claude automatically loads it as persistent context—acting like a “constitution” or custom system prompt for the AI agent.
-It provides global instructions, behavioral guidelines, project overview, and rules that apply across all interactions. Unlike Agent Skills (defined in SKILL.md files inside .claude/skills/ directories) or subagents (custom agents in .claude/agents/), CLAUDE.md is always in context and ideal for high-level guidance.
-Purpose in Relation to Skills and Agents
-* Agent Skills: Modular capabilities (e.g., PDF editing, PR summarization) that Claude can invoke automatically or on command. Skills are auto-discoverable, but Claude sometimes needs reminders to use them reliably.
-* Agents/Subagents: Claude Code uses built-in subagents (e.g., Explore, Plan, Task) or custom ones. You can instruct delegation to them.
-CLAUDE.md helps by:
-* Listing and describing available skills to improve auto-invocation.
-* Providing rules for when/how to use skills or delegate to subagents.
-* Enforcing consistent behavior across agentic workflows.
-Without a good CLAUDE.md, Claude may underuse skills or agents, leading to less efficient outcomes.
-How to Create and Structure CLAUDE.md
-1. Placement:
-    * Put it in your project root (e.g., /your-project/CLAUDE.md).
-    * For global defaults, use ~/.claude/CLAUDE.md.
-2. Basic Structure: Use clear markdown with headings, lists, and concise language. Follow “progressive disclosure”: Give overview first, details only when needed. Example template: # Project Overview
-3. This is a [brief description of your project, tech stack, goals].
-4. 
-5. # Core Principles
-6. - Always prioritize [e.g., clean code, security, performance].
-7. - Think step-by-step before acting.
-8. - Use progressive disclosure: Plan first, then execute.
-9. 
-10. # Available Skills
-11. Here are the key skills available in .claude/skills/. Use them when relevant:
-12. 
-13. - **PR Summary**: For reviewing pull requests. Invoke with /pr-summary or let me auto-trigger on git-related tasks.
-14. - **PDF Editor**: For creating/editing PDFs. Auto-use when documents are mentioned.
-15. - **Testing Helper**: Runs tests and suggests fixes. Always use before committing code.
-16. 
-17. Prefer auto-invocation of skills when the task matches their description. If unsure, explicitly invoke via slash command (e.g., /skill-name).
-18. 
-19. # Agent Delegation
-20. - Use **Explore** subagent for research/discovery tasks.
-21. - Use **Plan** for breaking down complex features.
-22. - Use **Task** for focused implementation.
-23. - Delegate explicitly: "@Plan: Create a plan for X" or let me decide based on context.
-24. 
-25. # Coding Standards
-26. - Follow [e.g., Airbnb style guide].
-27. - Always write tests.
-28. - Comment complex logic.
-29. 
-30. # Workflow Rules
-31. - Before major changes, summarize your plan.
-32. - If stuck, ask for clarification.
-33. 
-34. Best Practices for Skills and Agents:
-    * List Skills Explicitly: Include a section with names, descriptions, and triggers. This boosts Claude’s recall and auto-invocation (a common pain point).
-    * Instruct Invocation:
-        * Encourage auto-use: “Automatically invoke relevant skills based on task context.”
-        * Provide fallbacks: “If a skill seems applicable but not triggering, use the slash command.”
-    * Handle Subagents:
-        * Reference built-ins: “Delegate to Explore for browsing unknowns, Plan for architecture.”
-        * For custom subagents: Describe them and when to use (e.g., “@ResearchAgent: Analyze this topic”).
-    * Keep It Concise: Aim for 500-2000 words. Too long bloats context and raises costs.
-    * Progressive Disclosure: High-level rules first; reference detailed files (e.g., “See TESTING.md for test guidelines”).
-    * Testing: Start small, iterate by observing Claude’s behavior in sessions.
-    * Combine with Skills: CLAUDE.md for “what/why”, skills for “how” (detailed scripts/instructions).
-Common Pitfalls to Avoid
-* Dumping everything into CLAUDE.md — offload specifics to skills or separate MD files.
-* Ignoring auto-invocation — explicitly listing skills helps.
-* Overly rigid rules — Claude performs better with flexible guidelines.
-With a well-written CLAUDE.md, Claude becomes more proactive in using skills and agents, leading to better agentic performance. For advanced examples, check community resources like Anthropic’s docs or blogs on “writing good CLAUDE.md”. Experiment in your projects!
-
-—-
-
-# Project Overview
-[Your usual project summary, architecture, style guides, etc.]
-
-# Available Skills
-These skills are automatically available. Invoke them manually with /skill-name or let me decide when relevant.
-
-- **s1** (from skills/s1/SKILL.md):  
-  Specializes in [brief description, e.g., "processing data pipelines with pandas"].  
-  Use when: [specific triggers, e.g., "tasks involving data cleaning, ETL, or analysis"].
-
-- **s2** (from skills/s2/SKILL.md):  
-  Specializes in [brief description, e.g., "frontend UI components with React"].  
-  Use when: [specific triggers, e.g., "building or refactoring user interfaces"].
-
-# Available Subagents
-These are specialized teammate agents. Delegate to them using the Teammate tool (or @mention if supported in your setup).
-
-- **Agent A** (from ~/.claude/agents/A):  
-  Role: [e.g., "Architecture and planning expert"].  
-  Strengths: [e.g., "High-level design, refactoring strategies"].  
-  Delegate when: [e.g., "planning new features or reviewing system architecture"].
-
-- **Agent B** (from ~/.claude/agents/B):  
-  Role: [e.g., "Testing and validation specialist"].  
-  Strengths: [e.g., "Writing tests, debugging edge cases"].  
-  Delegate when: [e.g., "implementing unit/integration tests or fixing bugs"].
-
-# Workflow Orchestration
-For complex tasks:
-1. Break down the problem into phases.
-2. Use skills s1/s2 directly for targeted subtasks.
-3. Delegate larger modules to Agent A (planning) or Agent B (testing) via Teammate tool.
-4. Review and synthesize results yourself.
-
-Example: When adding a new feature involving data processing and UI:
-- Use s1 for backend data logic.
-- Use s2 for frontend.
-- Delegate overall design to Agent A.
-

@@ -175,6 +175,128 @@ func TestEngineerCanFlyAcrossVisibleRailNetwork(t *testing.T) {
 	}
 }
 
+func TestSiguoCenterMountainCellsAreEngineerRailDestinations(t *testing.T) {
+	for _, pos := range []Pos{{7, 7}, {7, 9}, {9, 7}, {9, 9}} {
+		if cell := BoardCell(pos); cell.Type != Mountain {
+			t.Fatalf("%v type = %v, want Mountain", pos, cell.Type)
+		}
+	}
+
+	g := testState(t,
+		[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+		map[PieceID]Pos{1: {1, 6}},
+		North,
+	)
+	moves := LegalMoves(g, 1)
+	for _, mountain := range []Pos{{7, 7}, {7, 9}, {9, 7}, {9, 9}} {
+		move, ok := moveTo(moves, mountain)
+		if !ok {
+			t.Fatalf("expected engineer to rail-fly to center mountain %v", mountain)
+		}
+		if len(move.Path) < 2 || move.Path[0] != (Pos{1, 6}) || move.Path[len(move.Path)-1] != mountain {
+			t.Fatalf("expected rail path to %v, got %v", mountain, move.Path)
+		}
+	}
+}
+
+func TestSiguoNonEngineerCannotEnterCenterMountain(t *testing.T) {
+	g := testState(t,
+		[]Piece{{ID: 1, Owner: North, Rank: Commander, Alive: true}},
+		map[PieceID]Pos{1: {6, 6}},
+		North,
+	)
+	if hasMove(LegalMoves(g, 1), Pos{7, 7}) {
+		t.Fatalf("non-engineer should not enter center mountain")
+	}
+}
+
+func TestSiguoEngineerCanFlyFromMountainBackToRail(t *testing.T) {
+	g := testState(t,
+		[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+		map[PieceID]Pos{1: {7, 7}},
+		North,
+	)
+	if !hasMove(LegalMoves(g, 1), Pos{15, 8}) {
+		t.Fatalf("engineer on center mountain should be able to rejoin connected rail network")
+	}
+}
+
+func TestSiguoEngineerOnMountainCanFlyToAnyUnblockedRail(t *testing.T) {
+	tests := []struct {
+		name string
+		from Pos
+		to   Pos
+	}{
+		{"north west mountain to south home rail", Pos{7, 7}, Pos{15, 8}},
+		{"north east mountain to west home rail", Pos{7, 9}, Pos{8, 1}},
+		{"south west mountain to east home rail", Pos{9, 7}, Pos{8, 15}},
+		{"south east mountain to north home rail", Pos{9, 9}, Pos{1, 8}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := testState(t,
+				[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+				map[PieceID]Pos{1: tt.from},
+				North,
+			)
+			move, ok := moveTo(LegalMoves(g, 1), tt.to)
+			if !ok {
+				t.Fatalf("expected engineer on mountain %v to fly to rail %v", tt.from, tt.to)
+			}
+			if len(move.Path) < 2 || move.Path[0] != tt.from || move.Path[len(move.Path)-1] != tt.to {
+				t.Fatalf("expected rail path from mountain %v to %v, got %v", tt.from, tt.to, move.Path)
+			}
+		})
+	}
+}
+
+func TestSiguoEngineerOnMountainCanAttackRailBlockerButCannotPassIt(t *testing.T) {
+	g := testState(t,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
+			{ID: 2, Owner: East, Rank: PlatoonLeader, Alive: true},
+			{ID: 3, Owner: East, Rank: Commander, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {7, 7},
+			2: {1, 6},
+			3: {0, 6},
+		},
+		North,
+	)
+	moves := LegalMoves(g, 1)
+	if !hasMove(moves, Pos{1, 6}) {
+		t.Fatalf("engineer on mountain should be able to attack the first rail blocker")
+	}
+	if hasMove(moves, Pos{0, 6}) {
+		t.Fatalf("engineer should not pass through an occupied rail blocker")
+	}
+}
+
+func TestSiguoEngineerOnMountainCannotFlyWhenAllRailSidesBlocked(t *testing.T) {
+	g := testState(t,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
+			{ID: 2, Owner: South, Rank: PlatoonLeader, Alive: true},
+			{ID: 3, Owner: South, Rank: CompanyCommander, Alive: true},
+			{ID: 4, Owner: South, Rank: BattalionCommander, Alive: true},
+			{ID: 5, Owner: South, Rank: RegimentCommander, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {7, 7},
+			2: {6, 6},
+			3: {6, 8},
+			4: {8, 6},
+			5: {8, 8},
+		},
+		North,
+	)
+	if moves := LegalMoves(g, 1); len(moves) != 0 {
+		t.Fatalf("engineer should not fly out when all four mountain rail sides are blocked, moves = %v", moves)
+	}
+}
+
 func TestEngineerRailFlightStopsAtBlocker(t *testing.T) {
 	g := testState(t,
 		[]Piece{

@@ -12,14 +12,14 @@ func ResolveCombat(attacker, defender Piece) CombatResult {
 	result := CombatResult{}
 
 	switch {
-	case attacker.Rank == Bomb || defender.Rank == Bomb:
-		result.Outcome = BothDie
-		result.AttackerDies = true
-		result.DefenderDies = true
 	case defender.Rank == Flag:
 		result.Outcome = AttackerWins
 		result.DefenderDies = true
 		result.FlagCaptured = true
+	case attacker.Rank == Bomb || defender.Rank == Bomb:
+		result.Outcome = BothDie
+		result.AttackerDies = true
+		result.DefenderDies = true
 	case attacker.Rank == Engineer && defender.Rank == Mine:
 		result.Outcome = AttackerWins
 		result.DefenderDies = true
