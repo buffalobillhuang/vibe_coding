@@ -118,6 +118,64 @@ func TestStartReportsFriendlyMessageWhenActiveRoomsAreFull(t *testing.T) {
 	}
 }
 
+func TestJoinAssignsSystemNamesWhenBlank(t *testing.T) {
+	r := New("ABC123")
+	first, err := r.Join("", "")
+	if err != nil {
+		t.Fatalf("Join(blank first) error = %v", err)
+	}
+	second, err := r.Join("   ", "")
+	if err != nil {
+		t.Fatalf("Join(blank second) error = %v", err)
+	}
+	if first.Name != "玩家1" || second.Name != "玩家2" {
+		t.Fatalf("names = %q/%q, want 玩家1/玩家2", first.Name, second.Name)
+	}
+	if _, err := r.Join("", first.Token); err != nil {
+		t.Fatalf("Reconnect(blank) error = %v", err)
+	}
+	if first.Name != "玩家1" {
+		t.Fatalf("blank reconnect renamed player to %q", first.Name)
+	}
+}
+
+func TestFullSiguoLobbyPlayersCanSwapSeats(t *testing.T) {
+	r := New("ABC123")
+	north, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	east, err := r.Join("east", "")
+	if err != nil {
+		t.Fatalf("Join(east) error = %v", err)
+	}
+	for _, name := range []string{"south", "west"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+
+	target := game.East
+	sendTestMessage(t, r, north.Token, protocol.ClientMessage{Type: "seat.swap", Seq: 1, Seat: &target})
+
+	if north.Seat != game.East || east.Seat != game.North {
+		t.Fatalf("seats after swap = north:%s east:%s, want East/North", north.Seat, east.Seat)
+	}
+	if r.seats[game.East] != north || r.seats[game.North] != east {
+		t.Fatalf("seat map not swapped")
+	}
+	if r.host != game.East {
+		t.Fatalf("host seat = %s, want East after host swaps", r.host)
+	}
+	snap, err := r.SnapshotFor(north.Token)
+	if err != nil {
+		t.Fatalf("SnapshotFor(north) error = %v", err)
+	}
+	if snap.SelfSeat != game.East {
+		t.Fatalf("snapshot selfSeat = %s, want East", snap.SelfSeat)
+	}
+}
+
 func TestRoomMoveCanAttackEnemyPiece(t *testing.T) {
 	r := New("ABC123")
 	p, err := r.Join("north", "")

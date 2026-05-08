@@ -265,12 +265,18 @@ function watchRoomPanelHTML() {
 
 function seatsHTML() {
   const seats = state.room?.seats || activeSeats().map(seat => ({seat}));
+  const canSwap = canSwapSeats();
   return seats.map(s => `
     <div class="seat ${state.room?.turn === s.seat ? "current" : ""}" data-seat="${s.seat}">
       <b>${seatNames[s.seat]}</b>
       <span class="subtle">${s.name ? esc(s.name) : "空位"} ${s.host ? "房主" : ""} ${s.ready ? "已提交" : ""}</span>
+      ${canSwap && s.name && s.seat !== state.seat ? `<button type="button" class="seat-swap-btn" data-seat="${s.seat}">换位</button>` : ""}
     </div>
   `).join("");
+}
+
+function canSwapSeats() {
+  return !state.viewer && currentMode() === "siguo" && state.room?.phase === "lobby" && (state.room.seats || []).filter(s => s.name).length === 4;
 }
 
 function modeSwitchHTML() {
@@ -750,6 +756,7 @@ function bind() {
   const sendTeamBtn = document.querySelector("#sendTeam");
   if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
   document.querySelectorAll(".quick-chat-btn").forEach(btn => btn.onclick = () => fillQuickChat(btn.dataset.phrase));
+  document.querySelectorAll(".seat-swap-btn").forEach(btn => btn.onclick = () => swapSeat(btn.dataset.seat));
   document.querySelector("#modeSiguo").onclick = () => setMode("siguo");
   document.querySelector("#modeJunqi").onclick = () => setMode("junqi");
   const skipBtn = document.querySelector("#skipBtn");
@@ -800,7 +807,7 @@ function confirmAction(message, fn) {
 }
 
 async function createRoom() {
-  state.name = document.querySelector("#name").value || "玩家";
+  state.name = document.querySelector("#name").value.trim();
   const res = await fetch("/api/rooms", {method:"POST", body: JSON.stringify({name: state.name, mode: currentMode()})});
   await acceptJoin(res);
 }
@@ -828,13 +835,21 @@ function viewerURL(code) {
 }
 
 function inviteURL(code) {
-  return shareURL("join", code);
+  const inviteName = window.prompt("给被邀请玩家取个名字（可留空，由系统分配）", "") || "";
+  return shareURL("join", code, inviteName.trim() ? {name: inviteName.trim()} : null);
 }
 
-function shareURL(param, code) {
+function shareURL(param, code, extras = null) {
   const origin = shareOrigin();
   if (!origin) return "";
-  return `${origin}${location.pathname}?${param}=${encodeURIComponent(code)}`;
+  const url = new URL(location.pathname, origin);
+  url.searchParams.set(param, code);
+  if (extras) {
+    for (const [key, value] of Object.entries(extras)) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.href;
 }
 
 function shareOrigin() {
@@ -855,7 +870,7 @@ async function copyInviteLink(code) {
   }
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(url);
-    log("邀请链接已复制");
+    log(`邀请链接已复制：${url}`);
     return;
   }
   log(`邀请链接：${url}`);
@@ -869,7 +884,7 @@ async function copyViewerLink(code) {
   }
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(url);
-    log("观战链接已复制");
+    log(`观战链接已复制：${url}`);
     return;
   }
   log(`观战链接：${url}`);
@@ -910,7 +925,7 @@ function leaveEndedRoom(shouldRender = true) {
 }
 
 async function joinRoom() {
-  state.name = document.querySelector("#name").value || "玩家";
+  state.name = document.querySelector("#name").value.trim();
   state.code = document.querySelector("#code").value.toUpperCase();
   const res = await fetch(`/api/rooms/${state.code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
   await acceptJoin(res);
@@ -919,7 +934,6 @@ async function joinRoom() {
 async function joinFromInvite(code) {
   code = String(code || "").toUpperCase();
   if (!code) return;
-  state.name = state.name || "玩家";
   state.code = code;
   const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
   await acceptJoin(res, {inviteCode: code});
@@ -939,6 +953,7 @@ async function acceptJoin(res, opts = {}) {
   state.code = data.code;
   state.token = data.sessionToken;
   state.seat = data.seat;
+  state.name = data.name || state.name;
   state.host = data.host;
   state.viewer = false;
   state.watchOpen = false;
@@ -946,6 +961,7 @@ async function acceptJoin(res, opts = {}) {
   localStorage.setItem("siguo.code", state.code);
   localStorage.setItem("siguo.token", state.token);
   localStorage.setItem("siguo.seat", String(state.seat));
+  localStorage.setItem("siguo.name", state.name);
   history.replaceState(null, "", location.pathname);
   connect();
 }
@@ -1020,6 +1036,10 @@ async function viewerRoomStatus(code) {
 function onMessage(msg) {
   if (msg.type === "room.state") {
     state.room = msg.room;
+    if (!state.viewer && typeof msg.room?.selfSeat === "number") {
+      state.seat = msg.room.selfSeat;
+      localStorage.setItem("siguo.seat", String(state.seat));
+    }
     if (msg.room?.mode) {
       state.mode = msg.room.mode;
       localStorage.setItem("siguo.mode", state.mode);
@@ -1099,6 +1119,10 @@ function sendChat(channel) {
   const input = document.querySelector("#chatText");
   send({type:"chat.send", channel, text: input.value});
   input.value = "";
+}
+
+function swapSeat(seat) {
+  send({type:"seat.swap", seat: Number(seat)});
 }
 
 function fillQuickChat(text) {
@@ -1258,6 +1282,11 @@ setInterval(tickTimer, 200);
 const initialParams = new URLSearchParams(location.search);
 const initialWatchCode = initialParams.get("watch");
 const initialJoinCode = initialParams.get("join");
+const initialInviteName = initialParams.get("name");
+if (initialJoinCode && initialInviteName) {
+  state.name = initialInviteName;
+  localStorage.setItem("siguo.name", state.name);
+}
 if (initialWatchCode) {
   connectViewer(initialWatchCode);
 } else if (initialJoinCode) {

@@ -249,14 +249,16 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"function copyInviteLink(code)",
 		"function joinFromInvite(code)",
 		"function offerViewerAfterJoinFailure(code, message)",
-		"邀请链接已复制",
-		"?${param}=${encodeURIComponent(code)}",
+		"邀请链接已复制：${url}",
+		"观战链接已复制：${url}",
 		"玩家座位已满，可选择观战",
 		"joinOfferView",
 		"function connectViewer(code)",
 		"function viewerRoomStatus(code)",
 		"观战席已满，请稍后再试",
-		"function shareURL(param, code)",
+		"function shareURL(param, code, extras = null)",
+		"url.searchParams.set(key, value);",
+		`const initialInviteName = initialParams.get("name");`,
 		"viewer=1",
 		"function responseErrorText(res)",
 		"return data.error || text;",
@@ -264,6 +266,9 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"不怕神一样的对手，就怕猪一样的队友",
 		"function quickChatHTML()",
 		"function fillQuickChat(text)",
+		"function canSwapSeats()",
+		`send({type:"seat.swap", seat: Number(seat)})`,
+		`msg.room?.selfSeat`,
 		"function junqiSeatColor(seat)",
 		`Number(seat) === 0 ? "red" : "blue"`,
 		"function sameTeam(a, b)",
@@ -297,7 +302,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}

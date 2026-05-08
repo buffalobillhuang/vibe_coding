@@ -1105,6 +1105,18 @@ input {
   border-radius: 6px;
 }
 
+.seat .subtle {
+  display: block;
+}
+
+.seat-swap-btn {
+  width: 100%;
+  min-height: 28px;
+  margin-top: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .seat b {
   display: inline-grid;
   place-items: center;

@@ -60,6 +60,7 @@ type RoomSnapshot struct {
 	Mode            game.GameMode      `json:"mode"`
 	Phase           string             `json:"phase"`
 	Seats           []SeatInfo         `json:"seats"`
+	SelfSeat        game.Seat          `json:"selfSeat"`
 	HostSeat        game.Seat          `json:"hostSeat"`
 	AllowTeamChat   bool               `json:"allowTeamChat"`
 	TimeControl     TimeControl        `json:"timeControl"`
@@ -92,6 +93,7 @@ type ClientMessage struct {
 	TimeControl   *TimeControl  `json:"timeControl,omitempty"`
 	AllowTeamChat *bool         `json:"allowTeamChat,omitempty"`
 	Mode          game.GameMode `json:"mode,omitempty"`
+	Seat          *game.Seat    `json:"seat,omitempty"`
 	PieceID       game.PieceID  `json:"pieceId,omitempty"`
 	Row           int           `json:"row,omitempty"`
 	Col           int           `json:"col,omitempty"`

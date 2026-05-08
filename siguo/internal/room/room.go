@@ -106,7 +106,9 @@ func (r *Room) Join(name, token string) (*Player, error) {
 	name = cleanName(name)
 	if token != "" {
 		if player := r.players[token]; player != nil {
-			player.Name = name
+			if name != "" {
+				player.Name = name
+			}
 			return player, nil
 		}
 	}
@@ -120,6 +122,9 @@ func (r *Room) Join(name, token string) (*Player, error) {
 	seat := firstOpenSeat(r.mode, r.seats)
 	if token == "" {
 		token = newToken()
+	}
+	if name == "" {
+		name = r.defaultPlayerNameLocked()
 	}
 	player := &Player{
 		Name:  name,
@@ -277,6 +282,8 @@ func (r *Room) Handle(token string, raw []byte) {
 	switch msg.Type {
 	case "room.config":
 		r.handleConfigLocked(player, msg)
+	case "seat.swap":
+		r.handleSeatSwapLocked(player, msg)
 	case "room.start":
 		r.handleStartLocked(player, msg.Seq)
 	case "setup.randomize":
@@ -341,6 +348,51 @@ func (r *Room) handleConfigLocked(player *Player, msg protocol.ClientMessage) {
 	}
 	if r.mode == game.ModeJunqi {
 		r.allowTeamChat = false
+	}
+	r.broadcastRoomLocked()
+}
+
+func (r *Room) handleSeatSwapLocked(player *Player, msg protocol.ClientMessage) {
+	if r.phase != PhaseLobby {
+		r.sendErrorLocked(player.Token, "bad_phase", "只能在大厅换位", msg.Seq)
+		return
+	}
+	if r.mode != game.ModeSiguo {
+		r.sendErrorLocked(player.Token, "bad_mode", "只有四国 2v2 可以换位", msg.Seq)
+		return
+	}
+	if len(r.seats) != len(game.ActiveSeats(r.mode)) {
+		r.sendErrorLocked(player.Token, "not_ready", "四名玩家到齐后才能换位", msg.Seq)
+		return
+	}
+	if msg.Seat == nil {
+		r.sendErrorLocked(player.Token, "bad_seat", "请选择要交换的位置", msg.Seq)
+		return
+	}
+	targetSeat := *msg.Seat
+	if !seatActiveInMode(r.mode, targetSeat) {
+		r.sendErrorLocked(player.Token, "bad_seat", "座位不存在", msg.Seq)
+		return
+	}
+	if targetSeat == player.Seat {
+		r.sendLocked(player.Token, protocol.ServerMessage{Type: "room.state", Room: r.snapshotLocked(player.Seat)})
+		return
+	}
+	target := r.seats[targetSeat]
+	if target == nil {
+		r.sendErrorLocked(player.Token, "empty_seat", "只能与已加入的玩家换位", msg.Seq)
+		return
+	}
+
+	fromSeat := player.Seat
+	r.seats[fromSeat] = target
+	r.seats[targetSeat] = player
+	player.Seat = targetSeat
+	target.Seat = fromSeat
+	if player.Host {
+		r.host = targetSeat
+	} else if target.Host {
+		r.host = fromSeat
 	}
 	r.broadcastRoomLocked()
 }
@@ -1135,6 +1187,7 @@ func (r *Room) snapshotLocked(viewer game.Seat) *protocol.RoomSnapshot {
 		Code:          r.Code,
 		Mode:          r.mode,
 		Phase:         r.phase,
+		SelfSeat:      viewer,
 		HostSeat:      r.host,
 		AllowTeamChat: r.allowTeamChat,
 		TimeControl:   r.timeControl,
@@ -1301,14 +1354,33 @@ func firstOpenSeat(mode game.GameMode, seats map[game.Seat]*Player) game.Seat {
 
 func cleanName(name string) string {
 	name = strings.TrimSpace(name)
-	if name == "" {
-		return "玩家"
-	}
 	runes := []rune(name)
 	if len(runes) > 16 {
 		name = string(runes[:16])
 	}
 	return name
+}
+
+func (r *Room) defaultPlayerNameLocked() string {
+	used := map[string]bool{}
+	for _, player := range r.players {
+		used[player.Name] = true
+	}
+	for i := 1; ; i++ {
+		name := fmt.Sprintf("玩家%d", i)
+		if !used[name] {
+			return name
+		}
+	}
+}
+
+func seatActiveInMode(mode game.GameMode, target game.Seat) bool {
+	for _, seat := range game.ActiveSeats(mode) {
+		if seat == target {
+			return true
+		}
+	}
+	return false
 }
 
 func newToken() string {
