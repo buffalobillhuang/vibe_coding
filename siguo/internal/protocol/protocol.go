@@ -9,7 +9,7 @@ type TimeControl struct {
 }
 
 func DefaultTimeControl() TimeControl {
-	return TimeControl{SetupSeconds: 180, MoveSeconds: 15, IncrementSec: 0}
+	return TimeControl{SetupSeconds: 180, MoveSeconds: 45, IncrementSec: 0}
 }
 
 const MaxSkipsPerPlayer = 5

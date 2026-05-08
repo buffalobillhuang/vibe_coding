@@ -451,7 +451,7 @@ function playerTickersHTML() {
   const eliminated = state.room.eliminated || {};
   const turn = state.room.turn;
   const isJunqi = currentMode() === "junqi";
-  const moveLimit = state.room.moveLimitSec || 15;
+  const moveLimit = state.room.moveLimitSec || 45;
   return seats.map(s => {
     const seat = s.seat;
     const used = skips[seat] || 0;
@@ -558,7 +558,7 @@ function tickTimer() {
   const phase = state.room.phase;
   const turn = state.room.turn;
   const deadline = state.room.moveDeadlineMs || 0;
-  const limitSec = state.room.moveLimitSec || 15;
+  const limitSec = state.room.moveLimitSec || 45;
   const reqPending = !!state.room.request;
   const eliminated = state.room.eliminated || {};
   document.querySelectorAll(".player-ticker").forEach(el => {

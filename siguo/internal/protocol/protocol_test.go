@@ -60,3 +60,10 @@ func TestSeatSlicesMarshalAsNumericArraysInProtocolMessages(t *testing.T) {
 		t.Fatalf("protocol JSON contains base64-encoded seat slices: %s", jsonText)
 	}
 }
+
+func TestDefaultTimeControlUsesFortyFiveSecondMoves(t *testing.T) {
+	control := DefaultTimeControl()
+	if control.MoveSeconds != 45 {
+		t.Fatalf("DefaultTimeControl().MoveSeconds = %d, want 45", control.MoveSeconds)
+	}
+}
