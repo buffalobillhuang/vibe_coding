@@ -26,6 +26,14 @@ type ClientView struct {
 }
 
 func (g *GameState) ViewFor(viewer Seat) ClientView {
+	return g.viewFor(viewer, false)
+}
+
+func (g *GameState) ViewForSpectator() ClientView {
+	return g.viewFor(North, true)
+}
+
+func (g *GameState) viewFor(viewer Seat, spectator bool) ClientView {
 	view := ClientView{
 		Mode:       g.Mode,
 		Viewer:     viewer,
@@ -39,7 +47,7 @@ func (g *GameState) ViewFor(viewer Seat) ClientView {
 		view.Eliminated[seat] = eliminated
 	}
 	for _, piece := range g.Pieces {
-		if piece.Owner == viewer && !piece.Alive {
+		if !spectator && piece.Owner == viewer && !piece.Alive {
 			view.DeadPieces = append(view.DeadPieces, ClientPiece{
 				ID:    piece.ID,
 				Owner: piece.Owner,
@@ -65,7 +73,7 @@ func (g *GameState) ViewFor(viewer Seat) ClientView {
 					Alive:   piece.Alive,
 					Exposed: g.Revealed[piece.ID],
 				}
-				if piece.Owner == viewer || g.Revealed[piece.ID] {
+				if (!spectator && piece.Owner == viewer) || g.Revealed[piece.ID] {
 					cp.Rank = piece.Rank
 				}
 				out.Piece = &cp

@@ -58,7 +58,7 @@ type config struct {
 func readConfig() config {
 	cfg := config{
 		Addr:        env("SIGUO_ADDR", ":8080"),
-		MaxRooms:    envInt("SIGUO_MAX_ROOMS", 100),
+		MaxRooms:    envInt("SIGUO_MAX_ROOMS", 25),
 		LogLevel:    env("SIGUO_LOG_LEVEL", "info"),
 		AllowOrigin: env("SIGUO_ALLOW_ORIGIN", ""),
 	}
@@ -88,6 +88,10 @@ func (c config) logLevel() slog.Level {
 
 func handleRooms(h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			writeJSON(w, protocol.ActiveRoomsResponse{Rooms: h.ActiveRooms()})
+			return
+		}
 		if r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return

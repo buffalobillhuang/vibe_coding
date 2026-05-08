@@ -40,11 +40,23 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("room")
 	token := r.URL.Query().Get("token")
 	room, ok := h.Hub.Get(code)
-	if !ok || token == "" {
+	if !ok {
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
-	out, _, err := room.Connect(token)
+	isViewer := r.URL.Query().Get("viewer") == "1"
+	var out <-chan []byte
+	var viewerID string
+	var err error
+	if isViewer {
+		out, viewerID, err = room.ConnectViewer()
+	} else {
+		if token == "" {
+			http.Error(w, "room not found", http.StatusNotFound)
+			return
+		}
+		out, _, err = room.Connect(token)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -52,11 +64,19 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	conn, rw, err := accept(w, r)
 	if err != nil {
-		room.Disconnect(token)
+		if isViewer {
+			room.DisconnectViewer(viewerID)
+		} else {
+			room.Disconnect(token)
+		}
 		return
 	}
 	defer conn.Close()
-	defer room.Disconnect(token)
+	if isViewer {
+		defer room.DisconnectViewer(viewerID)
+	} else {
+		defer room.Disconnect(token)
+	}
 
 	done := make(chan struct{})
 	var writeMu sync.Mutex
@@ -94,7 +114,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		switch op {
 		case opText:
-			room.Handle(token, payload)
+			if !isViewer {
+				room.Handle(token, payload)
+			}
 		case opPing:
 			_ = safeWrite(opPong, payload)
 		case opClose:

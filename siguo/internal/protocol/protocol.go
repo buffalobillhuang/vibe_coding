@@ -41,6 +41,20 @@ type JoinRoomResponse struct {
 	Host         bool      `json:"host"`
 }
 
+type ActiveRoomsResponse struct {
+	Rooms []ActiveRoomInfo `json:"rooms"`
+}
+
+type ActiveRoomInfo struct {
+	Code        string        `json:"code"`
+	Mode        game.GameMode `json:"mode"`
+	Phase       string        `json:"phase"`
+	Seats       []SeatInfo    `json:"seats"`
+	Viewers     int           `json:"viewers"`
+	MaxViewers  int           `json:"maxViewers"`
+	CanJoinView bool          `json:"canJoinView"`
+}
+
 type RoomSnapshot struct {
 	Code           string             `json:"code"`
 	Mode           game.GameMode      `json:"mode"`

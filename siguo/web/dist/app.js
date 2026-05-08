@@ -41,7 +41,10 @@ const state = {
   combat: null,
   log: [],
   chat: [],
-  lowTimeWarned: false
+  lowTimeWarned: false,
+  viewer: false,
+  watchOpen: false,
+  watchRooms: []
 };
 
 const app = document.querySelector("#app");
@@ -52,14 +55,17 @@ function render() {
       <section class="table">
         <div class="topbar">
           <div class="brand"><h1>四国军棋</h1><span>${statusText()}</span></div>
-          <div class="row" style="max-width:520px">
+          <div class="row" style="max-width:720px">
+            <button id="watchBtn">观战室</button>
+            ${viewerLinkButtonHTML()}
             <button class="primary" id="startBtn" ${canStart() ? "" : "disabled"}>开始</button>
-            <button id="randBtn" ${state.room?.phase === "setup" ? "" : "disabled"}>随机</button>
-            <button id="submitBtn" ${state.room?.phase === "setup" ? "" : "disabled"}>提交</button>
+            <button id="randBtn" ${!state.viewer && state.room?.phase === "setup" ? "" : "disabled"}>随机</button>
+            <button id="submitBtn" ${!state.viewer && state.room?.phase === "setup" ? "" : "disabled"}>提交</button>
             ${actionButtonsHTML()}
             <button id="soundBtn" class="toggle ${state.sound ? "on" : "off"}">声音</button>
           </div>
         </div>
+        ${watchRoomPanelHTML()}
         ${requestBannerHTML()}
         <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
@@ -72,7 +78,7 @@ function render() {
             <input id="code" placeholder="房间码" value="${esc(state.code)}" />
             <button id="join">加入</button>
           </div>
-          <div class="subtle">本机地址可直接分享给同一局域网玩家。模式：${modeNames[currentMode()]}。你的座位：${seatNames[state.seat] || "-"}</div>
+          <div class="subtle">${state.viewer ? "观战中" : "本机地址可直接分享给同一局域网玩家"}。模式：${modeNames[currentMode()]}。你的座位：${state.viewer ? "观战" : seatNames[state.seat] || "-"}</div>
         </div>
         ${setupCultureHTML()}
         <div class="panel">
@@ -85,11 +91,11 @@ function render() {
         <div class="panel stack">
           <b>聊天</b>
           <div class="chat-log">${state.chat.slice(-80).map(chatLine).join("")}</div>
-          <div class="row">
+          ${state.viewer ? "" : `<div class="row">
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
             ${currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
-          </div>
+          </div>`}
         </div>
       </aside>
     </div>
@@ -102,10 +108,12 @@ function statusText() {
   if (!state.room) return "创建或加入一个 6 位房间码";
   const phase = {lobby: "大厅", setup: "布阵", playing: "对局", ended: "结束"}[state.room.phase] || state.room.phase;
   const turn = state.room.phase === "playing" ? ` · ${seatNames[state.room.turn]}方行动` : "";
-  return `房间 ${state.code} · ${modeNames[currentMode()]} · ${phase}${turn}`;
+  const role = state.viewer ? "观战" : `房间 ${state.code}`;
+  return `${role} · ${modeNames[currentMode()]} · ${phase}${turn}`;
 }
 
 function canStart() {
+  if (state.viewer) return false;
   const seats = activeSeats();
   const occupied = state.room?.seats?.filter(s => seats.includes(s.seat) && s.name) || [];
   return state.room?.phase === "lobby" && state.host && occupied.length === seats.length;
@@ -159,6 +167,9 @@ function victoryHTML() {
 }
 
 function victoryActionsHTML() {
+  if (state.viewer) {
+    return `<div class="victory-actions"><button id="leaveRoomBtn">返回大厅</button></div>`;
+  }
   return `<div class="victory-actions">
     <button id="restartRoomBtn" class="primary">再开一局</button>
     <button id="leaveRoomBtn">返回大厅</button>
@@ -184,6 +195,28 @@ function setupCultureHTML() {
         ${poemColumns}${poemColumns}
       </div>
     </div>
+  </div>`;
+}
+
+function viewerLinkButtonHTML() {
+  if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
+  return `<button id="viewerLinkBtn">观战链接</button>`;
+}
+
+function watchRoomPanelHTML() {
+  if (!state.watchOpen) return "";
+  const rooms = state.watchRooms || [];
+  const rows = rooms.length ? rooms.map(room => {
+    const names = (room.seats || []).map(s => s.name || seatNames[s.seat]).join(" · ");
+    return `<div class="watch-row">
+      <div><b>${esc(room.code)}</b><span>${modeNames[room.mode] || room.mode} · ${room.phase === "setup" ? "布阵" : "对局"} · ${room.viewers}/${room.maxViewers} 观战</span><small>${esc(names)}</small></div>
+      <button class="watch-join" data-code="${esc(room.code)}" ${room.canJoinView ? "" : "disabled"}>观看</button>
+      <button class="watch-copy" data-code="${esc(room.code)}">复制链接</button>
+    </div>`;
+  }).join("") : `<div class="subtle">暂无进行中的对局</div>`;
+  return `<div class="panel watch-panel">
+    <div class="watch-head"><b>观战室</b><div><button id="watchRefreshBtn">刷新</button><button id="watchCloseBtn">关闭</button></div></div>
+    <div class="watch-list">${rows}</div>
   </div>`;
 }
 
@@ -382,8 +415,8 @@ function playerTickersHTML() {
     const isElim = !!eliminated[seat];
     const reqPending = !!state.room.request;
     const active = phase === "playing" && seat === turn && !isElim && !reqPending;
-    const canRequest = isJunqi && phase === "playing" && seat === state.seat && !isElim && !reqPending;
-    const canSkip = isJunqi && phase === "playing" && seat === state.seat && seat === turn && used < maxSkips && !isElim && !reqPending;
+    const canRequest = !state.viewer && isJunqi && phase === "playing" && seat === state.seat && !isElim && !reqPending;
+    const canSkip = !state.viewer && isJunqi && phase === "playing" && seat === state.seat && seat === turn && used < maxSkips && !isElim && !reqPending;
     const orient = `ticker-rel-${relativeSeat(seat)}`;
     return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""}" data-seat="${seat}">
       <div class="ticker-head">
@@ -407,6 +440,7 @@ function playerTickersHTML() {
 }
 
 function actionButtonsHTML() {
+  if (state.viewer) return "";
   if (!state.room || state.room.phase !== "playing") return "";
   const turn = state.room.turn;
   const skips = state.room.skips || {};
@@ -438,13 +472,13 @@ function requestBannerHTML() {
   let actorTag = "";
   if (req.stage === "teammate") {
     statusText = `${seatNames[fromSeat]}方 ${esc(fromName)} 请求${label}，等待队友支持`;
-    if (state.seat === seatPartner(fromSeat) && !myElim) {
+    if (!state.viewer && state.seat === seatPartner(fromSeat) && !myElim) {
       actorTag = "需要你回应";
       myAction = `<button id="reqAccept" class="primary">支持</button><button id="reqReject">拒绝</button>`;
     }
   } else {
     statusText = `${seatNames[fromSeat]}方请求${label}，等待对方回应`;
-    if (!sameSide(state.seat, fromSeat) && !myElim) {
+    if (!state.viewer && !sameSide(state.seat, fromSeat) && !myElim) {
       if (acks.includes(state.seat)) {
         statusText += `（你已同意）`;
       } else {
@@ -453,7 +487,7 @@ function requestBannerHTML() {
       }
     }
   }
-  const cancelBtn = state.seat === fromSeat ? `<button id="reqCancel">撤回</button>` : "";
+  const cancelBtn = !state.viewer && state.seat === fromSeat ? `<button id="reqCancel">撤回</button>` : "";
   return `<div class="request-banner ${actorTag ? "request-mine" : ""}">
     <div class="request-text">${actorTag ? `<b>${actorTag}：</b>` : ""}${statusText}</div>
     <div class="request-actions">${myAction}${cancelBtn}</div>
@@ -639,6 +673,15 @@ function fromDisplay(row, col) {
 function bind() {
   document.querySelector("#create").onclick = createRoom;
   document.querySelector("#join").onclick = joinRoom;
+  document.querySelector("#watchBtn").onclick = openWatchRoom;
+  const viewerLinkBtn = document.querySelector("#viewerLinkBtn");
+  if (viewerLinkBtn) viewerLinkBtn.onclick = () => copyViewerLink(state.code);
+  const watchRefreshBtn = document.querySelector("#watchRefreshBtn");
+  if (watchRefreshBtn) watchRefreshBtn.onclick = refreshWatchRooms;
+  const watchCloseBtn = document.querySelector("#watchCloseBtn");
+  if (watchCloseBtn) watchCloseBtn.onclick = () => { state.watchOpen = false; render(); };
+  document.querySelectorAll(".watch-join").forEach(btn => btn.onclick = () => connectViewer(btn.dataset.code));
+  document.querySelectorAll(".watch-copy").forEach(btn => btn.onclick = () => copyViewerLink(btn.dataset.code));
   document.querySelector("#startBtn").onclick = () => send({type:"room.start"});
   document.querySelector("#randBtn").onclick = () => send({type:"setup.randomize"});
   document.querySelector("#submitBtn").onclick = () => send({type:"setup.submit"});
@@ -650,7 +693,8 @@ function bind() {
     syncSetupMusic();
     render();
   };
-  document.querySelector("#sendAll").onclick = () => sendChat("all");
+  const sendAllBtn = document.querySelector("#sendAll");
+  if (sendAllBtn) sendAllBtn.onclick = () => sendChat("all");
   const sendTeamBtn = document.querySelector("#sendTeam");
   if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
   document.querySelector("#modeSiguo").onclick = () => setMode("siguo");
@@ -708,6 +752,38 @@ async function createRoom() {
   await acceptJoin(res);
 }
 
+async function openWatchRoom() {
+  state.watchOpen = true;
+  render();
+  await refreshWatchRooms();
+}
+
+async function refreshWatchRooms() {
+  const res = await fetch("/api/rooms");
+  if (!res.ok) {
+    log(`错误：${await responseErrorText(res)}`);
+    return;
+  }
+  const data = await res.json();
+  state.watchRooms = data.rooms || [];
+  state.watchOpen = true;
+  render();
+}
+
+function viewerURL(code) {
+  return `${location.origin}${location.pathname}?watch=${encodeURIComponent(code)}`;
+}
+
+async function copyViewerLink(code) {
+  const url = viewerURL(code);
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+    log("观战链接已复制");
+    return;
+  }
+  log(`观战链接：${url}`);
+}
+
 function setMode(mode) {
   if (state.room?.phase === "ended") leaveEndedRoom(false);
   if (state.room && state.room.phase !== "lobby") return;
@@ -731,10 +807,13 @@ function leaveEndedRoom(shouldRender = true) {
   state.code = "";
   state.token = "";
   state.host = false;
+  state.viewer = false;
+  state.watchOpen = false;
   state.selected = null;
   state.combat = null;
   localStorage.removeItem("siguo.code");
   localStorage.removeItem("siguo.token");
+  if (location.search.includes("watch=")) history.replaceState(null, "", location.pathname);
   if (shouldRender) render();
 }
 
@@ -747,7 +826,7 @@ async function joinRoom() {
 
 async function acceptJoin(res) {
   if (!res.ok) {
-    log(`错误：${await res.text()}`);
+    log(`错误：${await responseErrorText(res)}`);
     return;
   }
   const data = await res.json();
@@ -755,10 +834,23 @@ async function acceptJoin(res) {
   state.token = data.sessionToken;
   state.seat = data.seat;
   state.host = data.host;
+  state.viewer = false;
+  state.watchOpen = false;
   localStorage.setItem("siguo.code", state.code);
   localStorage.setItem("siguo.token", state.token);
   localStorage.setItem("siguo.seat", String(state.seat));
   connect();
+}
+
+async function responseErrorText(res) {
+  const text = await res.text();
+  if (!text) return res.statusText || "请求失败";
+  try {
+    const data = JSON.parse(text);
+    return data.error || text;
+  } catch {
+    return text;
+  }
 }
 
 function connect() {
@@ -768,6 +860,45 @@ function connect() {
   state.ws.onopen = () => log("已连接");
   state.ws.onclose = () => log("连接已断开");
   state.ws.onmessage = e => onMessage(JSON.parse(e.data));
+}
+
+async function connectViewer(code) {
+  code = String(code || "").toUpperCase();
+  const status = await viewerRoomStatus(code);
+  if (!status.ok) {
+    log(status.message);
+    return;
+  }
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.close();
+  }
+  state.viewer = true;
+  state.watchOpen = false;
+  state.code = code;
+  state.token = "";
+  state.host = false;
+  state.seat = 2;
+  state.selected = null;
+  state.combat = null;
+  localStorage.removeItem("siguo.code");
+  localStorage.removeItem("siguo.token");
+  history.replaceState(null, "", `?watch=${encodeURIComponent(state.code)}`);
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  state.ws = new WebSocket(`${proto}://${location.host}/ws?room=${state.code}&viewer=1`);
+  state.ws.onopen = () => log("已进入观战");
+  state.ws.onclose = () => log("观战已断开");
+  state.ws.onmessage = e => onMessage(JSON.parse(e.data));
+}
+
+async function viewerRoomStatus(code) {
+  const res = await fetch("/api/rooms");
+  if (!res.ok) return {ok: false, message: `错误：${await responseErrorText(res)}`};
+  const data = await res.json();
+  const room = (data.rooms || []).find(r => String(r.code).toUpperCase() === code);
+  if (!room) return {ok: false, message: "对局不在进行中"};
+  if (!room.canJoinView) return {ok: false, message: "观战席已满，请稍后再试"};
+  return {ok: true};
 }
 
 function onMessage(msg) {
@@ -793,6 +924,10 @@ function onMessage(msg) {
 
 function clickCell(cell) {
   ensureAudio();
+  if (state.viewer) {
+    log("观战中，不能操作棋子");
+    return;
+  }
   const row = Number(cell.dataset.row);
   const col = Number(cell.dataset.col);
   const pieceEl = cell.querySelector(".piece");
@@ -831,6 +966,10 @@ function clickCell(cell) {
 
 function send(msg) {
   ensureAudio();
+  if (state.viewer) {
+    log("观战中，不能操作对局");
+    return;
+  }
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     log("尚未连接");
     return;
@@ -840,6 +979,7 @@ function send(msg) {
 }
 
 function sendChat(channel) {
+  if (state.viewer) return;
   const input = document.querySelector("#chatText");
   send({type:"chat.send", channel, text: input.value});
   input.value = "";
@@ -992,4 +1132,9 @@ function esc(s) {
 
 render();
 setInterval(tickTimer, 200);
-if (state.code && state.token) connect();
+const initialWatchCode = new URLSearchParams(location.search).get("watch");
+if (initialWatchCode) {
+  connectViewer(initialWatchCode);
+} else if (state.code && state.token) {
+  connect();
+}

@@ -28,6 +28,9 @@ const (
 )
 
 var ErrRoomFull = errors.New("room is full")
+var ErrViewersFull = errors.New("viewer room is full")
+
+const MaxViewers = 10
 
 type Player struct {
 	Name      string
@@ -51,6 +54,7 @@ type Room struct {
 	players       map[string]*Player
 	seats         map[game.Seat]*Player
 	connections   map[string]chan []byte
+	viewers       map[string]chan []byte
 	pieces        map[game.PieceID]game.Piece
 	placements    map[game.PieceID]game.Pos
 	state         *game.GameState
@@ -62,6 +66,8 @@ type Room struct {
 	turnDeadline  time.Time
 	turnEpoch     int64
 	request       *protocol.PendingRequest
+	tryActivate   func() bool
+	deactivate    func()
 }
 
 func New(code string) *Room {
@@ -74,12 +80,20 @@ func New(code string) *Room {
 		players:       map[string]*Player{},
 		seats:         map[game.Seat]*Player{},
 		connections:   map[string]chan []byte{},
+		viewers:       map[string]chan []byte{},
 		pieces:        map[game.PieceID]game.Piece{},
 		placements:    map[game.PieceID]game.Pos{},
 		nextPieceID:   1,
 		chatWindow:    map[string][]time.Time{},
 		skips:         map[game.Seat]int{},
 	}
+}
+
+func (r *Room) SetActiveHooks(tryActivate func() bool, deactivate func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.tryActivate = tryActivate
+	r.deactivate = deactivate
 }
 
 func (r *Room) Join(name, token string) (*Player, error) {
@@ -142,6 +156,39 @@ func (r *Room) ConfigureInitial(mode game.GameMode, tc *protocol.TimeControl, al
 	}
 }
 
+func (r *Room) Active() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.phase == PhaseSetup || r.phase == PhasePlaying
+}
+
+func (r *Room) ActiveSummary() (protocol.ActiveRoomInfo, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.phase != PhaseSetup && r.phase != PhasePlaying {
+		return protocol.ActiveRoomInfo{}, false
+	}
+	info := protocol.ActiveRoomInfo{
+		Code:        r.Code,
+		Mode:        r.mode,
+		Phase:       r.phase,
+		Viewers:     len(r.viewers),
+		MaxViewers:  MaxViewers,
+		CanJoinView: len(r.viewers) < MaxViewers,
+	}
+	for _, seat := range game.ActiveSeats(r.mode) {
+		seatInfo := protocol.SeatInfo{Seat: seat}
+		if p := r.seats[seat]; p != nil {
+			seatInfo.Name = p.Name
+			seatInfo.Connected = p.Connected
+			seatInfo.Host = p.Host
+			seatInfo.Ready = p.Ready
+		}
+		info.Seats = append(info.Seats, seatInfo)
+	}
+	return info, true
+}
+
 func (r *Room) Connect(token string) (<-chan []byte, *Player, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -159,6 +206,24 @@ func (r *Room) Connect(token string) (<-chan []byte, *Player, error) {
 	return ch, player, nil
 }
 
+func (r *Room) ConnectViewer() (<-chan []byte, string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.phase != PhaseSetup && r.phase != PhasePlaying {
+		return nil, "", errors.New("game is not active")
+	}
+	if len(r.viewers) >= MaxViewers {
+		return nil, "", ErrViewersFull
+	}
+	id := newToken()
+	ch := make(chan []byte, 32)
+	r.viewers[id] = ch
+	r.sendViewerLocked(id, protocol.ServerMessage{Type: "room.state", Room: r.spectatorSnapshotLocked()})
+	r.sendViewerLocked(id, protocol.ServerMessage{Type: "view", View: r.spectatorViewLocked()})
+	r.broadcastRoomLocked()
+	return ch, id, nil
+}
+
 func (r *Room) Disconnect(token string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -169,6 +234,16 @@ func (r *Room) Disconnect(token string) {
 	}
 	if player := r.players[token]; player != nil {
 		player.Connected = false
+	}
+	r.broadcastRoomLocked()
+}
+
+func (r *Room) DisconnectViewer(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ch := r.viewers[id]; ch != nil {
+		close(ch)
+		delete(r.viewers, id)
 	}
 	r.broadcastRoomLocked()
 }
@@ -283,6 +358,10 @@ func (r *Room) handleStartLocked(player *Player, refSeq int64) {
 	if r.phase != PhaseLobby {
 		return
 	}
+	if r.tryActivate != nil && !r.tryActivate() {
+		r.sendErrorLocked(player.Token, "active_rooms_full", "所有客房已满；过一会再来，先去放会儿风筝吧 ：）", refSeq)
+		return
+	}
 
 	r.phase = PhaseSetup
 	r.pieces = map[game.PieceID]game.Piece{}
@@ -383,7 +462,7 @@ func (r *Room) handleMoveLocked(player *Player, msg protocol.ClientMessage) {
 	}
 	r.state = next
 	if next.Phase == game.Ended {
-		r.phase = PhaseEnded
+		r.setEndedLocked()
 		r.cancelTurnTimerLocked()
 	} else {
 		r.startTurnTimerLocked()
@@ -497,6 +576,14 @@ func (r *Room) cancelTurnTimerLocked() {
 	r.turnDeadline = time.Time{}
 }
 
+func (r *Room) setEndedLocked() {
+	wasActive := r.phase == PhaseSetup || r.phase == PhasePlaying
+	r.phase = PhaseEnded
+	if wasActive && r.deactivate != nil {
+		r.deactivate()
+	}
+}
+
 func (r *Room) eliminateSeatLocked(seat game.Seat) {
 	if r.state == nil {
 		return
@@ -505,7 +592,7 @@ func (r *Room) eliminateSeatLocked(seat game.Seat) {
 	if winners := r.state.CheckWinner(); winners != nil {
 		r.state.Phase = game.Ended
 		r.state.Winner = winners
-		r.phase = PhaseEnded
+		r.setEndedLocked()
 		r.cancelTurnTimerLocked()
 		r.request = nil
 		r.broadcastRoomAndViewsLocked()
@@ -709,7 +796,7 @@ func (r *Room) surrenderTeamLocked(initiator game.Seat) {
 	}
 	r.state.Phase = game.Ended
 	r.state.Winner = winners
-	r.phase = PhaseEnded
+	r.setEndedLocked()
 	r.request = nil
 	r.cancelTurnTimerLocked()
 	r.broadcastRoomAndViewsLocked()
@@ -728,7 +815,7 @@ func (r *Room) declareDrawLocked() {
 	}
 	r.state.Phase = game.Ended
 	r.state.Winner = []game.Seat{}
-	r.phase = PhaseEnded
+	r.setEndedLocked()
 	r.request = nil
 	r.cancelTurnTimerLocked()
 	r.broadcastRoomAndViewsLocked()
@@ -765,7 +852,7 @@ func (r *Room) handleConcedeLocked(player *Player) {
 	if winners := r.state.CheckWinner(); winners != nil {
 		r.state.Phase = game.Ended
 		r.state.Winner = winners
-		r.phase = PhaseEnded
+		r.setEndedLocked()
 		r.cancelTurnTimerLocked()
 	}
 	r.broadcastRoomAndViewsLocked()
@@ -969,6 +1056,27 @@ func (r *Room) viewForLocked(seat game.Seat) *game.ClientView {
 	return &view
 }
 
+func (r *Room) spectatorViewLocked() *game.ClientView {
+	if r.phase == PhaseLobby {
+		return nil
+	}
+	if r.state != nil {
+		view := r.state.ViewForSpectator()
+		return &view
+	}
+	pieces := make([]game.Piece, 0, len(r.pieces))
+	for _, piece := range r.pieces {
+		pieces = append(pieces, piece)
+	}
+	state, err := game.NewStateForMode(r.mode, pieces, r.placements, game.North)
+	if err != nil {
+		return nil
+	}
+	state.Phase = game.Setup
+	view := state.ViewForSpectator()
+	return &view
+}
+
 func (r *Room) snapshotLocked(viewer game.Seat) *protocol.RoomSnapshot {
 	snap := &protocol.RoomSnapshot{
 		Code:          r.Code,
@@ -1028,10 +1136,19 @@ func (r *Room) snapshotLocked(viewer game.Seat) *protocol.RoomSnapshot {
 	return snap
 }
 
+func (r *Room) spectatorSnapshotLocked() *protocol.RoomSnapshot {
+	snap := r.snapshotLocked(game.North)
+	snap.View = r.spectatorViewLocked()
+	return snap
+}
+
 func (r *Room) broadcastRoomAndViewsLocked() {
 	r.broadcastRoomLocked()
 	for _, player := range r.players {
 		r.sendLocked(player.Token, protocol.ServerMessage{Type: "view", View: r.viewForLocked(player.Seat)})
+	}
+	for id := range r.viewers {
+		r.sendViewerLocked(id, protocol.ServerMessage{Type: "view", View: r.spectatorViewLocked()})
 	}
 }
 
@@ -1039,11 +1156,17 @@ func (r *Room) broadcastRoomLocked() {
 	for _, player := range r.players {
 		r.sendLocked(player.Token, protocol.ServerMessage{Type: "room.state", Room: r.snapshotLocked(player.Seat)})
 	}
+	for id := range r.viewers {
+		r.sendViewerLocked(id, protocol.ServerMessage{Type: "room.state", Room: r.spectatorSnapshotLocked()})
+	}
 }
 
 func (r *Room) broadcastLocked(msg protocol.ServerMessage) {
 	for token := range r.connections {
 		r.sendLocked(token, msg)
+	}
+	for id := range r.viewers {
+		r.sendViewerLocked(id, msg)
 	}
 }
 
@@ -1062,6 +1185,23 @@ func (r *Room) sendErrorLocked(token, code, message string, refSeq int64) {
 
 func (r *Room) sendLocked(token string, msg protocol.ServerMessage) {
 	ch := r.connections[token]
+	if ch == nil {
+		return
+	}
+	r.serverSeq++
+	msg.Seq = r.serverSeq
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	select {
+	case ch <- data:
+	default:
+	}
+}
+
+func (r *Room) sendViewerLocked(id string, msg protocol.ServerMessage) {
+	ch := r.viewers[id]
 	if ch == nil {
 		return
 	}

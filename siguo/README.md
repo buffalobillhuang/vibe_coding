@@ -20,19 +20,31 @@ make build
 
 The binary serves the embedded frontend and API on one port.
 
+By default, the server allows at most 25 active rooms at the same time. A room counts as active once it enters setup or play, and stops counting after it ends. Change the cap with `--max-rooms` or `SIGUO_MAX_ROOMS`. Each active room allows up to 10 viewers through the in-game spectator room or a `?watch=ROOMCODE` viewer link.
+
 ## Deploy To An Azure VM
 
-The server can run directly on port `8080`, but the recommended public deployment is to put Caddy in front of it. Caddy listens on standard web ports and reverse proxies traffic to the Go service.
+The server can run directly on port `8080`, but the recommended public deployment is to put Caddy in front of it. Caddy listens on standard web ports and reverse proxies traffic to the Go service running inside Docker.
 
-Open these inbound ports on the Azure VM network security group:
+### 1. Create The VM
 
-- `22/tcp` for SSH, preferably restricted to your own IP.
-- `80/tcp` for HTTP and Let's Encrypt validation.
-- `443/tcp` for HTTPS.
+1. Create an Azure VM with Ubuntu 22.04 LTS or Ubuntu 24.04 LTS.
+2. Add or confirm these inbound rules on the VM network security group:
 
-Do not open `8080/tcp` publicly for the Caddy deployment. The Go app listens on `8080` inside Docker, and Caddy reaches it through the Docker network.
+    - `22/tcp` for SSH. Restrict this to your own IP when possible.
+    - `80/tcp` for HTTP and Let's Encrypt validation.
+    - `443/tcp` for HTTPS.
 
-Create an Ubuntu VM, SSH into it, then install Docker:
+3. Do not open `8080/tcp` publicly for the Caddy deployment. The Go app listens on `8080` inside Docker, and Caddy reaches it through the Docker network.
+4. SSH into the VM:
+
+    ```sh
+    ssh azureuser@YOUR_VM_PUBLIC_IP
+    ```
+
+### 2. Install Docker
+
+Run these commands on the VM:
 
 ```sh
 sudo apt-get update
@@ -46,59 +58,229 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker "$USER"
 ```
 
-Log out and SSH back in so the Docker group membership takes effect. Then clone and deploy:
+Log out and SSH back in so the Docker group membership takes effect:
+
+```sh
+exit
+ssh azureuser@YOUR_VM_PUBLIC_IP
+```
+
+Verify Docker and Compose are available:
+
+```sh
+docker --version
+docker compose version
+```
+
+### 3. Clone The Repository
+
+Run these commands on the VM:
 
 ```sh
 git clone https://github.com/buffalobillhuang/vibe_coding.git
 cd vibe_coding/siguo
+```
+
+### 4. Deploy With Caddy
+
+Start the application and Caddy reverse proxy:
+
+```sh
 docker compose --profile cloud up -d --build
 ```
 
-Check the deployment:
+Check that both containers are running:
 
 ```sh
 docker compose ps
+```
+
+Check the application logs:
+
+```sh
 docker compose logs -f siguo
+```
+
+In a second SSH terminal, check the Caddy logs:
+
+```sh
+cd ~/vibe_coding/siguo
 docker compose logs -f caddy
 ```
 
-With the default `deploy/Caddyfile`, visit:
+With the default [deploy/Caddyfile](deploy/Caddyfile), visit:
 
 ```text
 http://YOUR_VM_PUBLIC_IP
 ```
 
-For HTTPS with a domain, point the domain's `A` record to the VM public IP and change `deploy/Caddyfile` from the IP-only HTTP listener:
+### 5. Enable HTTPS With A Domain
 
-```caddy
-:80 {
-	reverse_proxy siguo:8080
-}
-```
+Skip this section if you only want to test by public IP over HTTP.
 
-to a domain listener:
+1. Point your domain's `A` record to the VM public IP.
+2. Wait for DNS to propagate.
+3. On the VM, edit [deploy/Caddyfile](deploy/Caddyfile):
 
-```caddy
-yourdomain.com {
-	reverse_proxy siguo:8080
-}
-```
+    ```sh
+    cd ~/vibe_coding/siguo
+    nano deploy/Caddyfile
+    ```
 
-Then restart Caddy:
+4. Replace the IP-only HTTP listener:
+
+    ```caddy
+    :80 {
+         reverse_proxy siguo:8080
+    }
+    ```
+
+    with your domain:
+
+    ```caddy
+    yourdomain.com {
+         reverse_proxy siguo:8080
+    }
+    ```
+
+5. Restart the cloud stack:
+
+    ```sh
+    docker compose --profile cloud up -d
+    ```
+
+6. Confirm Caddy obtained a certificate:
+
+    ```sh
+    docker compose logs -f caddy
+    ```
+
+7. Visit:
+
+    ```text
+    https://yourdomain.com
+    ```
+
+Caddy requests and renews the HTTPS certificate automatically when DNS points to the VM and ports `80` and `443` are reachable.
+
+### 6. Stop And Start The Cloud Deployment
+
+To stop the containers without deleting them:
 
 ```sh
-docker compose --profile cloud up -d
+cd ~/vibe_coding/siguo
+docker compose --profile cloud stop
 ```
 
-Caddy will request and renew the HTTPS certificate automatically when DNS points to the VM and ports `80` and `443` are reachable.
-
-For quick testing without Caddy, run only the app service and open `8080/tcp` instead:
+To start them again:
 
 ```sh
-docker compose up -d --build siguo
+cd ~/vibe_coding/siguo
+docker compose --profile cloud start
+docker compose ps
 ```
 
-Then visit `http://YOUR_VM_PUBLIC_IP:8080`. This is simpler, but it does not provide HTTPS.
+To stop and remove the containers while keeping the source checkout:
+
+```sh
+cd ~/vibe_coding/siguo
+docker compose --profile cloud down
+```
+
+To start again after `down`:
+
+```sh
+cd ~/vibe_coding/siguo
+docker compose --profile cloud up -d --build
+docker compose ps
+```
+
+### 7. Update The Cloud Deployment
+
+Use these steps after new code has been pushed to GitHub.
+
+1. SSH into the VM:
+
+    ```sh
+    ssh azureuser@YOUR_VM_PUBLIC_IP
+    ```
+
+2. Go to the project directory:
+
+    ```sh
+    cd ~/vibe_coding/siguo
+    ```
+
+3. Check for local edits before pulling:
+
+    ```sh
+    git status --short
+    ```
+
+4. If [deploy/Caddyfile](deploy/Caddyfile) contains your production domain, keep that local change. If `git pull --ff-only` refuses to continue because of local edits, stash the Caddyfile change, pull the update, and restore the Caddyfile:
+
+    ```sh
+    git stash push -m production-caddyfile -- deploy/Caddyfile
+    git pull --ff-only
+    git stash pop
+    ```
+
+5. If there are no blocking local edits, pull the latest code directly:
+
+    ```sh
+    git pull --ff-only
+    ```
+
+6. Rebuild and restart the containers:
+
+    ```sh
+    docker compose --profile cloud up -d --build
+    ```
+
+7. Confirm the containers are running:
+
+    ```sh
+    docker compose ps
+    ```
+
+8. Check logs after the update:
+
+    ```sh
+    docker compose logs -f siguo
+    ```
+
+    In another SSH terminal:
+
+    ```sh
+    cd ~/vibe_coding/siguo
+    docker compose logs -f caddy
+    ```
+
+9. Open the site in a browser and create or join a room to confirm the update is working.
+
+### 8. Quick Direct Test Without Caddy
+
+Use this only for quick testing. It exposes the Go server directly on `8080` and does not provide HTTPS.
+
+1. Open `8080/tcp` on the VM network security group.
+2. Start only the app service:
+
+    ```sh
+    cd ~/vibe_coding/siguo
+    docker compose up -d --build siguo
+    ```
+
+3. Visit:
+
+    ```text
+    http://YOUR_VM_PUBLIC_IP:8080
+    ```
+
+4. When you are done testing, stop it:
+
+    ```sh
+    docker compose down
+    ```
 
 ## Notes
 

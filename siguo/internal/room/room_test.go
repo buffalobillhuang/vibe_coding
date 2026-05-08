@@ -2,7 +2,10 @@ package room
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"siguo/internal/game"
 	"siguo/internal/protocol"
@@ -34,6 +37,84 @@ func TestSetupPlaceSwapsOwnPieces(t *testing.T) {
 	}
 	if got := r.placements[2]; got != (game.Pos{Row: 1, Col: 8}) {
 		t.Fatalf("piece 2 position = %v, want {1 8}", got)
+	}
+}
+
+func TestActiveReportsSetupAndPlayingOnly(t *testing.T) {
+	r := New("ABC123")
+	if r.Active() {
+		t.Fatal("new lobby room should not be active")
+	}
+	r.phase = PhaseSetup
+	if !r.Active() {
+		t.Fatal("setup room should be active")
+	}
+	r.phase = PhasePlaying
+	if !r.Active() {
+		t.Fatal("playing room should be active")
+	}
+	r.phase = PhaseEnded
+	if r.Active() {
+		t.Fatal("ended room should not be active")
+	}
+}
+
+func TestConnectViewerCapsAtMaxViewers(t *testing.T) {
+	r := newPlayingRoom(t)
+	var viewerIDs []string
+	for i := 0; i < MaxViewers; i++ {
+		_, id, err := r.ConnectViewer()
+		if err != nil {
+			t.Fatalf("ConnectViewer(%d) error = %v", i, err)
+		}
+		viewerIDs = append(viewerIDs, id)
+	}
+	if _, _, err := r.ConnectViewer(); !errors.Is(err, ErrViewersFull) {
+		t.Fatalf("ConnectViewer() error = %v, want ErrViewersFull", err)
+	}
+	r.DisconnectViewer(viewerIDs[0])
+	if _, _, err := r.ConnectViewer(); err != nil {
+		t.Fatalf("ConnectViewer() after disconnect error = %v", err)
+	}
+}
+
+func TestStartReportsFriendlyMessageWhenActiveRoomsAreFull(t *testing.T) {
+	r := New("ABC123")
+	r.SetActiveHooks(func() bool { return false }, nil)
+	host, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(host) error = %v", err)
+	}
+	for _, name := range []string{"east", "south", "west"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+	out, _, err := r.Connect(host.Token)
+	if err != nil {
+		t.Fatalf("Connect(host) error = %v", err)
+	}
+	drainMessages(out)
+
+	sendTestMessage(t, r, host.Token, protocol.ClientMessage{Type: "room.start", Seq: 1})
+
+	select {
+	case data := <-out:
+		var msg protocol.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			t.Fatalf("Unmarshal(server message) error = %v", err)
+		}
+		if msg.Type != "error" || msg.Error == nil || msg.Error.Code != "active_rooms_full" {
+			t.Fatalf("message = %+v, want active_rooms_full error", msg)
+		}
+		if !strings.Contains(msg.Error.Message, "所有客房已满") {
+			t.Fatalf("error message = %q, missing friendly full-room message", msg.Error.Message)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for full-room error")
+	}
+	if r.phase != PhaseLobby {
+		t.Fatalf("phase = %s, want lobby after failed activation", r.phase)
 	}
 }
 
@@ -407,4 +488,14 @@ func sendTestMessage(t *testing.T, r *Room, token string, msg protocol.ClientMes
 		t.Fatalf("Marshal() error = %v", err)
 	}
 	r.Handle(token, data)
+}
+
+func drainMessages(ch <-chan []byte) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
 }

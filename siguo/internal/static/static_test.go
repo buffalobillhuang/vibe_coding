@@ -223,6 +223,15 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 	js := string(jsData)
 	for _, want := range []string{
 		"function victoryHTML()",
+		"观战室",
+		"function watchRoomPanelHTML()",
+		"function connectViewer(code)",
+		"function viewerRoomStatus(code)",
+		"观战席已满，请稍后再试",
+		"?watch=${encodeURIComponent(code)}",
+		"viewer=1",
+		"function responseErrorText(res)",
+		"return data.error || text;",
 		"function junqiSeatColor(seat)",
 		`Number(seat) === 0 ? "red" : "blue"`,
 		"function sameTeam(a, b)",
@@ -252,7 +261,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}
