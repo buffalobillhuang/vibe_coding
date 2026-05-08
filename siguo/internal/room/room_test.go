@@ -189,7 +189,82 @@ func TestStartCreatesVisibleSetupBoardForAllSeats(t *testing.T) {
 				t.Fatalf("seat %s view is empty", seat)
 			}
 		}
+		r.mu.Lock()
+		r.cancelSetupTimerLocked()
+		r.mu.Unlock()
 	}
+}
+
+func TestSetupTimeoutAutoSubmitsAndStartsPlaying(t *testing.T) {
+	r := New("ABC123")
+	r.ConfigureInitial(game.ModeSiguo, &protocol.TimeControl{SetupSeconds: 3600, MoveSeconds: 15}, nil)
+	host, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(host) error = %v", err)
+	}
+	for _, name := range []string{"east", "south", "west"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+	sendTestMessage(t, r, host.Token, protocol.ClientMessage{Type: "room.start", Seq: 1})
+	if r.phase != PhaseSetup {
+		t.Fatalf("phase = %s, want setup", r.phase)
+	}
+	if r.setupTimer == nil || r.setupDeadline.IsZero() {
+		t.Fatal("setup timer was not started")
+	}
+	epoch := r.setupEpoch
+	r.onSetupTimeout(epoch)
+	if r.phase != PhasePlaying {
+		t.Fatalf("phase = %s, want playing after setup timeout", r.phase)
+	}
+	if r.state == nil {
+		t.Fatal("state is nil after setup timeout")
+	}
+	if r.setupTimer != nil || !r.setupDeadline.IsZero() {
+		t.Fatal("setup timer was not cleared after auto-start")
+	}
+	for _, seat := range game.ActiveSeats(r.mode) {
+		if !r.seats[seat].Ready {
+			t.Fatalf("seat %s was not auto-submitted", seat)
+		}
+	}
+	r.mu.Lock()
+	r.cancelTurnTimerLocked()
+	r.mu.Unlock()
+}
+
+func TestAllSetupSubmissionsCancelSetupTimer(t *testing.T) {
+	r := New("ABC123")
+	r.ConfigureInitial(game.ModeSiguo, &protocol.TimeControl{SetupSeconds: 3600, MoveSeconds: 15}, nil)
+	host, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(host) error = %v", err)
+	}
+	for _, name := range []string{"east", "south", "west"} {
+		if _, err := r.Join(name, ""); err != nil {
+			t.Fatalf("Join(%s) error = %v", name, err)
+		}
+	}
+	sendTestMessage(t, r, host.Token, protocol.ClientMessage{Type: "room.start", Seq: 1})
+	if r.setupTimer == nil {
+		t.Fatal("setup timer was not started")
+	}
+	seq := int64(2)
+	for _, player := range r.seats {
+		sendTestMessage(t, r, player.Token, protocol.ClientMessage{Type: "setup.submit", Seq: seq})
+		seq++
+	}
+	if r.phase != PhasePlaying {
+		t.Fatalf("phase = %s, want playing after all submissions", r.phase)
+	}
+	if r.setupTimer != nil || !r.setupDeadline.IsZero() {
+		t.Fatal("setup timer was not cleared after all submissions")
+	}
+	r.mu.Lock()
+	r.cancelTurnTimerLocked()
+	r.mu.Unlock()
 }
 
 func TestSkipAdvancesTurnAndCounts(t *testing.T) {
@@ -321,6 +396,9 @@ func TestJunqiRoomStartsWithTwoPlayers(t *testing.T) {
 	if r.seats[game.East] != nil || r.seats[game.West] != nil {
 		t.Fatalf("junqi room should not allocate side seats")
 	}
+	r.mu.Lock()
+	r.cancelSetupTimerLocked()
+	r.mu.Unlock()
 }
 
 func TestJunqiConcedeGivesOpponentSingleWinner(t *testing.T) {

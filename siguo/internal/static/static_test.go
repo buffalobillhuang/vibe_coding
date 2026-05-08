@@ -223,6 +223,9 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 	js := string(jsData)
 	for _, want := range []string{
 		"function victoryHTML()",
+		"function setupCountdownText()",
+		"setupDeadlineMs",
+		"秒后自动开局",
 		"观战室",
 		"function watchRoomPanelHTML()",
 		"function inviteLinkButtonHTML()",
@@ -264,6 +267,10 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"另一方获胜",
 		"state.room?.Winner",
 		"function setupCultureHTML()",
+		"siguo.setupMusic",
+		`!["setup", "playing"].includes(state.room.phase)`,
+		`state.setupMusicEnabled && ["setup", "playing"].includes(state.room?.phase)`,
+		"四方列阵，战局正酣",
 		"poem-title",
 		"明·杨慎",
 		"滚滚长江东逝水",

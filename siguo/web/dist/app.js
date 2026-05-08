@@ -44,6 +44,7 @@ const state = {
   sound: localStorage.getItem("siguo.sound") !== "off",
   audio: null,
   setupMusic: null,
+  setupMusicEnabled: localStorage.getItem("siguo.setupMusic") === "on",
   setupMusicSource: 0,
   setupMusicBlocked: false,
   combat: null,
@@ -63,7 +64,7 @@ function render() {
     <div class="shell">
       <section class="table">
         <div class="topbar">
-          <div class="brand"><h1>四国军棋</h1><span>${statusText()}</span></div>
+          <div class="brand"><h1>四国军棋</h1><span id="roomStatus">${statusText()}</span></div>
           <div class="row" style="max-width:720px">
             <button id="watchBtn">观战室</button>
             ${inviteLinkButtonHTML()}
@@ -119,9 +120,17 @@ function render() {
 function statusText() {
   if (!state.room) return "创建或加入一个 6 位房间码";
   const phase = {lobby: "大厅", setup: "布阵", playing: "对局", ended: "结束"}[state.room.phase] || state.room.phase;
+  const setup = state.room.phase === "setup" ? setupCountdownText() : "";
   const turn = state.room.phase === "playing" ? ` · ${seatNames[state.room.turn]}方行动` : "";
   const role = state.viewer ? "观战" : `房间 ${state.code}`;
-  return `${role} · ${modeNames[currentMode()]} · ${phase}${turn}`;
+  return `${role} · ${modeNames[currentMode()]} · ${phase}${setup}${turn}`;
+}
+
+function setupCountdownText() {
+  const deadline = state.room?.setupDeadlineMs || 0;
+  if (!deadline) return "";
+  const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  return ` · ${seconds}秒后自动开局`;
 }
 
 function canStart() {
@@ -189,9 +198,9 @@ function victoryActionsHTML() {
 }
 
 function setupCultureHTML() {
-  if (state.room?.phase !== "setup") return "";
-  const musicText = !state.sound ? "静音" : state.setupMusicBlocked ? "启乐" : "清音";
-  const modeLine = currentMode() === "junqi" ? "一枰对坐，静候开局" : "四方列阵，联军待发";
+  if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
+  const musicText = state.setupMusicEnabled ? "静音" : state.setupMusicBlocked ? "再试" : "启乐";
+  const modeLine = currentMode() === "junqi" ? "一枰对坐，风云入局" : "四方列阵，战局正酣";
   const poemColumns = [
     `<span class="poem-title">${setupPoemTitle}</span>`,
     `<span class="poem-author">${setupPoemAuthor}</span>`,
@@ -544,6 +553,8 @@ function sameSide(a, b) {
 
 function tickTimer() {
   if (!state.room) return;
+  const status = document.querySelector("#roomStatus");
+  if (status) status.textContent = statusText();
   const phase = state.room.phase;
   const turn = state.room.turn;
   const deadline = state.room.moveDeadlineMs || 0;
@@ -728,9 +739,10 @@ function bind() {
   document.querySelector("#soundBtn").onclick = toggleSound;
   const setupMusicBtn = document.querySelector("#setupMusicBtn");
   if (setupMusicBtn) setupMusicBtn.onclick = () => {
-    state.sound = !state.sound;
-    localStorage.setItem("siguo.sound", state.sound ? "on" : "off");
-    syncSetupMusic();
+    state.setupMusicEnabled = !state.setupMusicEnabled;
+    localStorage.setItem("siguo.setupMusic", state.setupMusicEnabled ? "on" : "off");
+    if (state.setupMusicEnabled) playSetupMusic(true);
+    else syncSetupMusic();
     render();
   };
   const sendAllBtn = document.querySelector("#sendAll");
@@ -1127,7 +1139,7 @@ function handleEventEffect(ev) {
 }
 
 function shouldPlaySetupMusic() {
-  return state.sound && state.room?.phase === "setup";
+  return state.setupMusicEnabled && ["setup", "playing"].includes(state.room?.phase);
 }
 
 function ensureSetupMusic() {

@@ -56,23 +56,24 @@ type ActiveRoomInfo struct {
 }
 
 type RoomSnapshot struct {
-	Code           string             `json:"code"`
-	Mode           game.GameMode      `json:"mode"`
-	Phase          string             `json:"phase"`
-	Seats          []SeatInfo         `json:"seats"`
-	HostSeat       game.Seat          `json:"hostSeat"`
-	AllowTeamChat  bool               `json:"allowTeamChat"`
-	TimeControl    TimeControl        `json:"timeControl"`
-	Turn           game.Seat          `json:"turn"`
-	Winner         []game.Seat        `json:"winner,omitempty"`
-	Ready          []game.Seat        `json:"ready,omitempty"`
-	View           *game.ClientView   `json:"view,omitempty"`
-	Skips          map[game.Seat]int  `json:"skips,omitempty"`
-	MaxSkips       int                `json:"maxSkips,omitempty"`
-	MoveDeadlineMs int64              `json:"moveDeadlineMs,omitempty"`
-	MoveLimitSec   int                `json:"moveLimitSec,omitempty"`
-	Eliminated     map[game.Seat]bool `json:"eliminated,omitempty"`
-	Request        *PendingRequest    `json:"request,omitempty"`
+	Code            string             `json:"code"`
+	Mode            game.GameMode      `json:"mode"`
+	Phase           string             `json:"phase"`
+	Seats           []SeatInfo         `json:"seats"`
+	HostSeat        game.Seat          `json:"hostSeat"`
+	AllowTeamChat   bool               `json:"allowTeamChat"`
+	TimeControl     TimeControl        `json:"timeControl"`
+	Turn            game.Seat          `json:"turn"`
+	Winner          []game.Seat        `json:"winner,omitempty"`
+	Ready           []game.Seat        `json:"ready,omitempty"`
+	View            *game.ClientView   `json:"view,omitempty"`
+	Skips           map[game.Seat]int  `json:"skips,omitempty"`
+	MaxSkips        int                `json:"maxSkips,omitempty"`
+	SetupDeadlineMs int64              `json:"setupDeadlineMs,omitempty"`
+	MoveDeadlineMs  int64              `json:"moveDeadlineMs,omitempty"`
+	MoveLimitSec    int                `json:"moveLimitSec,omitempty"`
+	Eliminated      map[game.Seat]bool `json:"eliminated,omitempty"`
+	Request         *PendingRequest    `json:"request,omitempty"`
 }
 
 type SeatInfo struct {

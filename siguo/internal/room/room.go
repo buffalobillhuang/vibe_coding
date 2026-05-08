@@ -62,6 +62,9 @@ type Room struct {
 	serverSeq     int64
 	chatWindow    map[string][]time.Time
 	skips         map[game.Seat]int
+	setupTimer    *time.Timer
+	setupDeadline time.Time
+	setupEpoch    int64
 	turnTimer     *time.Timer
 	turnDeadline  time.Time
 	turnEpoch     int64
@@ -366,12 +369,14 @@ func (r *Room) handleStartLocked(player *Player, refSeq int64) {
 	r.phase = PhaseSetup
 	r.pieces = map[game.PieceID]game.Piece{}
 	r.placements = map[game.PieceID]game.Pos{}
+	r.cancelTurnTimerLocked()
 	for _, seat := range game.ActiveSeats(r.mode) {
 		p := r.seats[seat]
 		p.Ready = false
 		p.PieceIDs = r.createArmyLocked(seat)
 		r.randomizeSetupLocked(p)
 	}
+	r.startSetupTimerLocked()
 	r.broadcastRoomAndViewsLocked()
 }
 
@@ -568,6 +573,52 @@ func (r *Room) startTurnTimerLocked() {
 	})
 }
 
+func (r *Room) startSetupTimerLocked() {
+	r.cancelSetupTimerLocked()
+	if r.phase != PhaseSetup {
+		return
+	}
+	limit := r.timeControl.SetupSeconds
+	if limit <= 0 {
+		limit = protocol.DefaultTimeControl().SetupSeconds
+	}
+	duration := time.Duration(limit) * time.Second
+	r.setupDeadline = time.Now().Add(duration)
+	r.setupEpoch++
+	epoch := r.setupEpoch
+	r.setupTimer = time.AfterFunc(duration, func() {
+		r.onSetupTimeout(epoch)
+	})
+}
+
+func (r *Room) onSetupTimeout(epoch int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if epoch != r.setupEpoch || r.phase != PhaseSetup {
+		return
+	}
+	r.autoSubmitSetupLocked()
+	r.broadcastNoticeLocked(game.North, "布阵时间到，未提交玩家自动提交")
+	r.startPlayingLocked()
+	r.broadcastRoomAndViewsLocked()
+}
+
+func (r *Room) autoSubmitSetupLocked() {
+	for _, seat := range game.ActiveSeats(r.mode) {
+		if player := r.seats[seat]; player != nil {
+			player.Ready = true
+		}
+	}
+}
+
+func (r *Room) cancelSetupTimerLocked() {
+	if r.setupTimer != nil {
+		r.setupTimer.Stop()
+		r.setupTimer = nil
+	}
+	r.setupDeadline = time.Time{}
+}
+
 func (r *Room) cancelTurnTimerLocked() {
 	if r.turnTimer != nil {
 		r.turnTimer.Stop()
@@ -579,6 +630,7 @@ func (r *Room) cancelTurnTimerLocked() {
 func (r *Room) setEndedLocked() {
 	wasActive := r.phase == PhaseSetup || r.phase == PhasePlaying
 	r.phase = PhaseEnded
+	r.cancelSetupTimerLocked()
 	if wasActive && r.deactivate != nil {
 		r.deactivate()
 	}
@@ -1001,6 +1053,7 @@ func (r *Room) startPlayingLocked() {
 	r.phase = PhasePlaying
 	r.skips = map[game.Seat]int{}
 	r.request = nil
+	r.cancelSetupTimerLocked()
 	r.startTurnTimerLocked()
 }
 
@@ -1099,6 +1152,9 @@ func (r *Room) snapshotLocked(viewer game.Seat) *protocol.RoomSnapshot {
 	}
 	if r.phase == PhasePlaying && !r.turnDeadline.IsZero() {
 		snap.MoveDeadlineMs = r.turnDeadline.UnixMilli()
+	}
+	if r.phase == PhaseSetup && !r.setupDeadline.IsZero() {
+		snap.SetupDeadlineMs = r.setupDeadline.UnixMilli()
 	}
 	if r.request != nil {
 		req := *r.request
