@@ -231,7 +231,7 @@ func TestSiguoEngineerCanFlyFromMountainBackToRail(t *testing.T) {
 	}
 }
 
-func TestSiguoEngineerOnMountainCanAirDropToAnyEmptyRail(t *testing.T) {
+func TestSiguoEngineerOnMountainCanRailFlyToReachableEmptyRail(t *testing.T) {
 	tests := []struct {
 		name string
 		from Pos
@@ -254,8 +254,8 @@ func TestSiguoEngineerOnMountainCanAirDropToAnyEmptyRail(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected engineer on mountain %v to fly to rail %v", tt.from, tt.to)
 			}
-			if len(move.Path) != 2 || move.Path[0] != tt.from || move.Path[1] != tt.to {
-				t.Fatalf("expected one-step air-drop from mountain %v to rail %v, got %v", tt.from, tt.to, move.Path)
+			if len(move.Path) < 3 || move.Path[0] != tt.from || move.Path[len(move.Path)-1] != tt.to {
+				t.Fatalf("expected railroad path from mountain %v to rail %v, got %v", tt.from, tt.to, move.Path)
 			}
 		})
 	}
@@ -329,7 +329,7 @@ func TestSiguoEngineerCanFlyBetweenAdjacentMountainsThroughTunnelWithBlockedRail
 	}
 }
 
-func TestSiguoEngineerOnMountainCannotLandOnOccupiedRail(t *testing.T) {
+func TestSiguoEngineerOnMountainCanAttackReachableOccupiedRailButNotPassIt(t *testing.T) {
 	g := testState(t,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
@@ -344,15 +344,15 @@ func TestSiguoEngineerOnMountainCannotLandOnOccupiedRail(t *testing.T) {
 		North,
 	)
 	moves := LegalMoves(g, 1)
-	if hasMove(moves, Pos{1, 6}) {
-		t.Fatalf("engineer should not attack occupied rail when leaving mountain")
+	if !hasMove(moves, Pos{1, 6}) {
+		t.Fatalf("engineer should attack reachable occupied rail endpoint")
 	}
-	if !hasMove(moves, Pos{5, 6}) {
-		t.Fatalf("engineer should still air-drop to any empty rail station")
+	if hasMove(moves, Pos{0, 6}) {
+		t.Fatalf("engineer should not pass through an occupied rail endpoint")
 	}
 }
 
-func TestSiguoEngineerOnMountainWithAllSideRailsBlockedCanStillAirDropAndTunnel(t *testing.T) {
+func TestSiguoEngineerOnMountainWithAllSideRailsBlockedCanStillUseMountainTunnels(t *testing.T) {
 	g := testState(t,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
@@ -371,12 +371,12 @@ func TestSiguoEngineerOnMountainWithAllSideRailsBlockedCanStillAirDropAndTunnel(
 		North,
 	)
 	moves := LegalMoves(g, 1)
-	if !hasMove(moves, Pos{15, 8}) {
-		t.Fatalf("engineer should air-drop to empty rail even when adjacent side rails are blocked, moves = %v", moves)
+	if hasMove(moves, Pos{15, 8}) {
+		t.Fatalf("engineer should not fly to remote rail when all railroad exits are blocked, moves = %v", moves)
 	}
 	for _, occupied := range []Pos{{6, 6}, {6, 8}, {8, 6}, {8, 8}} {
 		if hasMove(moves, occupied) {
-			t.Fatalf("engineer should not land on occupied side rail %v", occupied)
+			t.Fatalf("engineer should not land on same-team occupied side rail %v", occupied)
 		}
 	}
 	if !hasMove(moves, Pos{7, 9}) || !hasMove(moves, Pos{9, 7}) || !hasMove(moves, Pos{9, 9}) {

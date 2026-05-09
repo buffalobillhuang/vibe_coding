@@ -238,7 +238,7 @@ func TestJunqiEngineerCanRailFlyThenEnterMountain(t *testing.T) {
 	}
 }
 
-func TestJunqiEngineerOnMountainCanAirDropToEmptyRail(t *testing.T) {
+func TestJunqiEngineerOnMountainCanRailFlyToEmptyRail(t *testing.T) {
 	tests := []struct {
 		name string
 		from Pos
@@ -259,8 +259,8 @@ func TestJunqiEngineerOnMountainCanAirDropToEmptyRail(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected engineer on mountain %v to fly to rail %v", tt.from, tt.to)
 			}
-			if len(move.Path) != 2 || move.Path[0] != tt.from || move.Path[1] != tt.to {
-				t.Fatalf("expected one-step air-drop from mountain %v to rail %v, got %v", tt.from, tt.to, move.Path)
+			if len(move.Path) < 3 || move.Path[0] != tt.from || move.Path[len(move.Path)-1] != tt.to {
+				t.Fatalf("expected railroad path from mountain %v to rail %v, got %v", tt.from, tt.to, move.Path)
 			}
 		})
 	}
@@ -300,34 +300,109 @@ func TestJunqiEngineerCanFlyBetweenAdjacentMountainsThroughTunnelWithBlockedRail
 	}
 }
 
-func TestJunqiEngineerOnMountainCannotLandOnOccupiedRail(t *testing.T) {
+func TestJunqiEngineerOnMountainCanAttackReachableOccupiedRailButNotPassIt(t *testing.T) {
 	g := testStateForMode(t, ModeJunqi,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
 			{ID: 2, Owner: South, Rank: PlatoonLeader, Alive: true},
-			{ID: 3, Owner: South, Rank: CompanyCommander, Alive: true},
-			{ID: 4, Owner: South, Rank: BattalionCommander, Alive: true},
-			{ID: 5, Owner: South, Rank: RegimentCommander, Alive: true},
-			{ID: 6, Owner: South, Rank: Commander, Alive: true},
+			{ID: 3, Owner: South, Rank: Commander, Alive: true},
+			{ID: 4, Owner: North, Rank: CompanyCommander, Alive: true},
+			{ID: 5, Owner: North, Rank: BattalionCommander, Alive: true},
+			{ID: 6, Owner: North, Rank: RegimentCommander, Alive: true},
+			{ID: 7, Owner: North, Rank: BrigadeCommander, Alive: true},
 		},
 		map[PieceID]Pos{
 			1: {8, 7},
-			2: {7, 6},
-			3: {7, 8},
-			4: {9, 6},
-			5: {9, 8},
-			6: {6, 6},
+			2: {9, 6},
+			3: {10, 6},
+			4: {7, 6},
+			5: {7, 8},
+			6: {8, 6},
+			7: {9, 8},
 		},
 		North,
 	)
 	moves := LegalMoves(g, 1)
-	for _, blocker := range []Pos{{7, 6}, {7, 8}, {9, 6}, {9, 8}} {
-		if hasMove(moves, blocker) {
-			t.Fatalf("engineer should not attack occupied rail when leaving mountain: %v", blocker)
-		}
+	if !hasMove(moves, Pos{9, 6}) {
+		t.Fatalf("engineer should attack the first reachable occupied rail endpoint")
 	}
-	if !hasMove(moves, Pos{13, 10}) {
-		t.Fatalf("engineer should still air-drop to any empty rail station")
+	if hasMove(moves, Pos{10, 6}) {
+		t.Fatalf("engineer should not pass through an occupied rail endpoint")
+	}
+}
+
+func TestJunqiEngineerOnMountainCanFlyToBackRailMine(t *testing.T) {
+	g := testStateForMode(t, ModeJunqi,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
+			{ID: 2, Owner: South, Rank: Mine, Alive: true},
+			{ID: 3, Owner: South, Rank: Commander, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {8, 7},
+			2: {13, 10},
+			3: {9, 6},
+		},
+		North,
+	)
+	move, ok := moveTo(LegalMoves(g, 1), Pos{13, 10})
+	if !ok {
+		t.Fatalf("engineer on mountain should fly to enemy mine on back railroad")
+	}
+	if len(move.Path) < 3 || move.Path[0] != (Pos{8, 7}) || move.Path[len(move.Path)-1] != (Pos{13, 10}) {
+		t.Fatalf("expected railroad path to mine, got %v", move.Path)
+	}
+	next, events, err := ApplyMove(g, move)
+	if err != nil {
+		t.Fatalf("ApplyMove() error = %v", err)
+	}
+	if len(events) < 1 || events[0].Type != EventCombat || events[0].Outcome != AttackerWins {
+		t.Fatalf("events = %#v, want engineer mine-clearing combat", events)
+	}
+	if next.Pieces[2].Alive {
+		t.Fatalf("mine should be cleared")
+	}
+	if got, ok := next.PieceAt(Pos{13, 10}); !ok || got.ID != 1 {
+		t.Fatalf("piece at mine rail = %v/%v, want engineer", got, ok)
+	}
+	if _, ok := next.Positions[2]; ok {
+		t.Fatalf("cleared mine should not remain in positions")
+	}
+	if next.Turn != South {
+		t.Fatalf("turn = %v, want South", next.Turn)
+	}
+}
+
+func TestSiguoEngineerOnMountainCanFlyToBackRailMine(t *testing.T) {
+	g := testStateForMode(t, ModeSiguo,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
+			{ID: 2, Owner: East, Rank: Mine, Alive: true},
+			{ID: 3, Owner: East, Rank: Commander, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {7, 7},
+			2: {8, 15},
+			3: {6, 15},
+		},
+		North,
+	)
+	move, ok := moveTo(LegalMoves(g, 1), Pos{8, 15})
+	if !ok {
+		t.Fatalf("engineer on mountain should fly to enemy mine on back railroad in 2v2")
+	}
+	next, events, err := ApplyMove(g, move)
+	if err != nil {
+		t.Fatalf("ApplyMove() error = %v", err)
+	}
+	if len(events) < 1 || events[0].Type != EventCombat || events[0].Outcome != AttackerWins {
+		t.Fatalf("events = %#v, want engineer mine-clearing combat", events)
+	}
+	if next.Pieces[2].Alive {
+		t.Fatalf("mine should be cleared")
+	}
+	if got, ok := next.PieceAt(Pos{8, 15}); !ok || got.ID != 1 {
+		t.Fatalf("piece at mine rail = %v/%v, want engineer", got, ok)
 	}
 }
 

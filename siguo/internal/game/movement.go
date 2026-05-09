@@ -359,8 +359,16 @@ func engineerRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Pos {
 		for to, path := range adjacentMountainRailMoves(g, mover, from) {
 			out[to] = path
 		}
-		for _, rail := range emptyRailCells(g) {
-			out[rail] = []Pos{from, rail}
+		for _, rail := range adjacentRailCells(g.Mode, from) {
+			if visited[rail] || !canEnter(g, mover, rail) {
+				continue
+			}
+			visited[rail] = true
+			path := []Pos{from, rail}
+			out[rail] = path
+			if _, occupied := g.PieceAt(rail); !occupied {
+				queue = append(queue, node{pos: rail, path: path})
+			}
 		}
 	} else {
 		return out
@@ -405,23 +413,6 @@ func adjacentMountainRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Po
 			continue
 		}
 		out[to] = []Pos{from, to}
-	}
-	return out
-}
-
-func emptyRailCells(g *GameState) []Pos {
-	var out []Pos
-	for r := 0; r < BoardSize; r++ {
-		for c := 0; c < BoardSize; c++ {
-			pos := Pos{r, c}
-			if !g.isRailroad(pos) {
-				continue
-			}
-			if _, occupied := g.PieceAt(pos); occupied {
-				continue
-			}
-			out = append(out, pos)
-		}
 	}
 	return out
 }
