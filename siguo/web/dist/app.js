@@ -317,8 +317,8 @@ function boardHTML() {
   const cols = mode === "junqi" ? 5 : 17;
   const stageClass = mode === "junqi" ? "board-stage board-stage-junqi" : "board-stage";
   const boardOpen = mode === "junqi"
-    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}`
-    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`;
+    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}`
+    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`;
   const boardClose = mode === "junqi" ? `</div></div></div>` : `</div>`;
   let html = `<div class="${stageClass}">${boardOpen}`;
   for (let displayRow = 0; displayRow < rows; displayRow++) {
@@ -330,7 +330,7 @@ function boardHTML() {
       const selected = state.selected && state.selected.row === row && state.selected.col === col;
       const combat = state.combat && state.combat.row === row && state.combat.col === col && Date.now() < state.combat.until;
       const cellStyle = mode === "junqi" ? junqiCellStyle(displayRow, displayCol, row) : siguoCellStyle(displayRow, displayCol);
-      html += `<div class="cell ${cellClasses[type] || "off"} ${homeClass(row, col)} ${visualTrackClass(row, col)} ${turnFrontClass(row, col)} ${piece ? "occupied" : ""} ${selected ? "selected" : ""} ${combat ? "combat-hit" : ""}" data-row="${row}" data-col="${col}" ${cellStyle}>`;
+      html += `<div class="cell ${cellClasses[type] || "off"} ${homeClass(row, col)} ${visualTrackClass(row, col)} ${piece ? "occupied" : ""} ${selected ? "selected" : ""} ${combat ? "combat-hit" : ""}" data-row="${row}" data-col="${col}" ${cellStyle}>`;
       if (piece) {
         const owner = piece.Owner ?? piece.owner;
         const rank = piece.Rank ?? piece.rank;
@@ -471,6 +471,62 @@ function moveTrailOverlayHTML() {
     <polyline points="${polyline}" />
     ${dots}
   </svg>`;
+}
+
+function turnFrontOverlayHTML() {
+  const geom = turnFrontGeometry();
+  if (!geom) return "";
+  return `<div class="turn-front-dots" style="left:${geom.x.toFixed(2)}%;top:${geom.y.toFixed(2)}%;width:${geom.width.toFixed(2)}%;height:${geom.height.toFixed(2)}%;transform:translate(-50%, -50%) rotate(${geom.angle.toFixed(2)}deg)"><span class="turn-front-dot"></span><span class="turn-front-dot"></span></div>`;
+}
+
+function turnFrontGeometry() {
+  if (state.room?.phase !== "playing") return null;
+  const turn = Number(state.room.turn);
+  const spec = currentMode() === "junqi" ? junqiTurnFrontSpec(turn) : siguoTurnFrontSpec(turn);
+  if (!spec) return null;
+  const a = trailPoint(spec.a);
+  const b = trailPoint(spec.b);
+  const mid = trailPoint(spec.mid);
+  const front = trailPoint(spec.front);
+  if (!a || !b || !mid || !front) return null;
+
+  const frontDx = front.x - mid.x;
+  const frontDy = front.y - mid.y;
+  const frontDistance = Math.hypot(frontDx, frontDy) || 1;
+  const unitX = frontDx / frontDistance;
+  const unitY = frontDy / frontDistance;
+  const lineDx = b.x - a.x;
+  const lineDy = b.y - a.y;
+  const mode = currentMode();
+  const dotDiameter = mode === "junqi" ? 3.2 : 2.95;
+  const halfPieceHeight = mode === "junqi" ? 2.0 : 2.3;
+  const offset = halfPieceHeight + dotDiameter / 2;
+
+  return {
+    x: mid.x + unitX * offset,
+    y: mid.y + unitY * offset,
+    width: dotDiameter * 4.2,
+    height: dotDiameter,
+    angle: Math.atan2(lineDy, lineDx) * 180 / Math.PI
+  };
+}
+
+function siguoTurnFrontSpec(turn) {
+  switch (turn) {
+    case 0: return {a: {Row: 5, Col: 6}, b: {Row: 5, Col: 10}, mid: {Row: 5, Col: 8}, front: {Row: 6, Col: 8}};
+    case 1: return {a: {Row: 6, Col: 11}, b: {Row: 10, Col: 11}, mid: {Row: 8, Col: 11}, front: {Row: 8, Col: 10}};
+    case 2: return {a: {Row: 11, Col: 6}, b: {Row: 11, Col: 10}, mid: {Row: 11, Col: 8}, front: {Row: 10, Col: 8}};
+    case 3: return {a: {Row: 6, Col: 5}, b: {Row: 10, Col: 5}, mid: {Row: 8, Col: 5}, front: {Row: 8, Col: 6}};
+    default: return null;
+  }
+}
+
+function junqiTurnFrontSpec(turn) {
+  switch (turn) {
+    case 0: return {a: {Row: 7, Col: 6}, b: {Row: 7, Col: 10}, mid: {Row: 7, Col: 8}, front: {Row: 8, Col: 8}};
+    case 2: return {a: {Row: 9, Col: 6}, b: {Row: 9, Col: 10}, mid: {Row: 9, Col: 8}, front: {Row: 8, Col: 8}};
+    default: return null;
+  }
 }
 
 function trailPoint(pos) {
@@ -682,19 +738,6 @@ function homeClass(row, col) {
   if (col <= 5 && row >= 6 && row <= 10) return "home-west";
   if (col >= 11 && row >= 6 && row <= 10) return "home-east";
   if (row >= 6 && row <= 10 && col >= 6 && col <= 10) return "home-center";
-  return "";
-}
-
-function turnFrontClass(row, col) {
-  if (state.room?.phase !== "playing") return "";
-  const turn = state.room.turn;
-  if (currentMode() === "junqi") {
-    return "";
-  }
-  if (turn === 0 && row === 6 && col >= 6 && col <= 10) return "turn-front";
-  if (turn === 1 && col === 10 && row >= 6 && row <= 10) return "turn-front";
-  if (turn === 2 && row === 10 && col >= 6 && col <= 10) return "turn-front";
-  if (turn === 3 && col === 6 && row >= 6 && row <= 10) return "turn-front";
   return "";
 }
 

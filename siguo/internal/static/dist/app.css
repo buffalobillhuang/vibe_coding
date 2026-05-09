@@ -852,19 +852,22 @@ input {
   opacity: .92;
   text-shadow: 0 1px 1px rgba(0,0,0,.45);
 }
-.turn-front {
-  box-shadow:
-    inset 0 0 0 3px rgba(40, 224, 123, .98),
-    inset 0 0 20px rgba(40, 224, 123, .42);
-  z-index: 1;
-}
-.turn-front::after {
-  content: "";
+.turn-front-dots {
   position: absolute;
-  inset: 16%;
-  border-radius: 3px;
-  border: 1px solid rgba(126, 255, 184, .88);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 0 7px rgba(139, 81, 255, .92)) drop-shadow(0 0 13px rgba(139, 81, 255, .56));
+}
+
+.turn-front-dot {
+  width: 23.81%;
+  height: 100%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(248, 241, 255, .98) 0 16%, rgba(171, 118, 255, .96) 34%, rgba(105, 54, 207, .88) 62%, rgba(82, 33, 170, .32) 100%);
+  box-shadow: 0 0 0 1px rgba(229, 209, 255, .42), 0 0 12px rgba(150, 82, 255, .88), 0 0 24px rgba(113, 60, 220, .54);
 }
 
 .combat-hit {

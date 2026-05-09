@@ -202,6 +202,63 @@ func TestSideActivityPanelsShowNewestFiveFirst(t *testing.T) {
 	}
 }
 
+func TestTurnFrontUsesDotOverlayInBothModes(t *testing.T) {
+	jsData, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(jsData)
+	for _, want := range []string{
+		`railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}`,
+		`function turnFrontOverlayHTML()`,
+		`class="turn-front-dots"`,
+		`<span class="turn-front-dot"></span><span class="turn-front-dot"></span>`,
+		`function siguoTurnFrontSpec(turn)`,
+		`function junqiTurnFrontSpec(turn)`,
+		`const dotDiameter = mode === "junqi" ? 3.2 : 2.95;`,
+		`const halfPieceHeight = mode === "junqi" ? 2.0 : 2.3;`,
+		`width: dotDiameter * 4.2,`,
+		`height: dotDiameter,`,
+		`case 0: return {a: {Row: 7, Col: 6}, b: {Row: 7, Col: 10}, mid: {Row: 7, Col: 8}, front: {Row: 8, Col: 8}};`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("turn-front dot overlay behavior missing %q", want)
+		}
+	}
+	if strings.Contains(js, `turnFrontClass(row, col)`) || strings.Contains(js, `function turnFrontClass`) {
+		t.Fatalf("old cell-based turn-front highlighter should not be used")
+	}
+	if strings.Contains(js, `turn-front-tanks`) || strings.Contains(js, `tanks.jpg`) || strings.Contains(js, `turn-front-helix`) || strings.Contains(js, `turnFrontHelixSVG`) {
+		t.Fatalf("turn-front overlay should not depend on the tank image or helix marker")
+	}
+
+	cssData, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(cssData)
+	for _, want := range []string{
+		`.turn-front-dots {`,
+		`.turn-front-dot {`,
+		`width: 23.81%;`,
+		`height: 100%;`,
+		`radial-gradient(circle`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("turn-front dot overlay styling missing %q", want)
+		}
+	}
+	if strings.Contains(css, `.turn-front {`) || strings.Contains(css, `.turn-front::after`) {
+		t.Fatalf("old green turn-front cell styling should not be bundled")
+	}
+	if strings.Contains(css, `turn-front-tanks`) || strings.Contains(css, `tanks.jpg`) || strings.Contains(css, `turn-front-helix`) || strings.Contains(css, `helix-strand`) {
+		t.Fatalf("turn-front styling should not depend on the tank image or helix marker")
+	}
+	if _, err := FS.ReadFile("dist/tanks.jpg"); err == nil {
+		t.Fatalf("dist/tanks.jpg should not be bundled")
+	}
+}
+
 func TestJunqiUsesMap3BoardAsset(t *testing.T) {
 	cssData, err := FS.ReadFile("dist/app.css")
 	if err != nil {
@@ -324,8 +381,8 @@ func TestMoveTrailRendersInBothGameModes(t *testing.T) {
 	}
 	js := string(jsData)
 	for _, want := range []string{
-		`board-junqi-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}`,
-		`board-siguo-rel-${state.seat}">${railOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`,
+		`board-junqi-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}`,
+		`board-siguo-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`,
 		`function moveTrailOverlayHTML()`,
 		`if (type === "move" || type === "combat") setLastMoveTrail(ev);`,
 		`x: junqiMap3Centers.x[display.col] + nudge.x`,
