@@ -59,8 +59,14 @@ const state = {
   viewer: false,
   watchOpen: false,
   watchRooms: [],
-  joinOffer: null
+  joinOffer: null,
+  connectionStatus: "idle",
+  connectionMessage: "",
+  reconnectAttempts: 0,
+  reconnectTimer: null
 };
+
+const reconnectDelaysMs = [1000, 2000, 5000, 10000];
 
 const app = document.querySelector("#app");
 
@@ -128,7 +134,17 @@ function statusText() {
   const setup = state.room.phase === "setup" ? setupCountdownText() : "";
   const turn = state.room.phase === "playing" ? ` · ${seatNames[state.room.turn]}方行动` : "";
   const role = state.viewer ? "观战" : `房间 ${state.code}`;
-  return `${role} · ${modeNames[currentMode()]} · ${phase}${setup}${turn}`;
+  const connection = connectionStatusText();
+  return `${role} · ${modeNames[currentMode()]} · ${phase}${setup}${turn}${connection ? ` · ${connection}` : ""}`;
+}
+
+function connectionStatusText() {
+  if (!state.room) return "";
+  if (state.connectionMessage) return state.connectionMessage;
+  if (state.connectionStatus === "connecting") return "连接中";
+  if (state.connectionStatus === "reconnecting") return "重连中";
+  if (state.connectionStatus === "offline") return "已断线";
+  return "";
 }
 
 function setupCountdownText() {
@@ -1029,11 +1045,15 @@ function setMode(mode) {
 }
 
 function leaveEndedRoom(shouldRender = true) {
+  clearReconnectTimer();
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
   }
   state.ws = null;
+  state.connectionStatus = "idle";
+  state.connectionMessage = "";
+  state.reconnectAttempts = 0;
   state.room = null;
   state.view = null;
   state.code = "";
@@ -1115,12 +1135,7 @@ async function responseErrorText(res) {
 }
 
 function connect() {
-  if (state.ws) state.ws.close();
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  state.ws = new WebSocket(`${proto}://${location.host}/ws?room=${state.code}&token=${encodeURIComponent(state.token)}`);
-  state.ws.onopen = () => log("已连接");
-  state.ws.onclose = () => log("连接已断开");
-  state.ws.onmessage = e => onMessage(JSON.parse(e.data));
+  openSocket(false);
 }
 
 async function connectViewer(code) {
@@ -1148,11 +1163,63 @@ async function connectViewer(code) {
   localStorage.removeItem("siguo.code");
   localStorage.removeItem("siguo.token");
   history.replaceState(null, "", `?watch=${encodeURIComponent(state.code)}`);
+  openSocket(true);
+}
+
+function openSocket(viewer, isReconnect = false) {
+  clearReconnectTimer();
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.close();
+  }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  state.ws = new WebSocket(`${proto}://${location.host}/ws?room=${state.code}&viewer=1`);
-  state.ws.onopen = () => log("已进入观战");
-  state.ws.onclose = () => log("观战已断开");
-  state.ws.onmessage = e => onMessage(JSON.parse(e.data));
+  const query = viewer ? `room=${state.code}&viewer=1` : `room=${state.code}&token=${encodeURIComponent(state.token)}`;
+  const ws = new WebSocket(`${proto}://${location.host}/ws?${query}`);
+  state.ws = ws;
+  state.connectionStatus = isReconnect ? "reconnecting" : "connecting";
+  state.connectionMessage = isReconnect ? "正在重连" : "连接中";
+  render();
+  ws.onopen = () => {
+    if (state.ws !== ws) return;
+    state.connectionStatus = "connected";
+    state.connectionMessage = "";
+    state.reconnectAttempts = 0;
+    log(viewer ? (isReconnect ? "观战已重连" : "已进入观战") : (isReconnect ? "已重连" : "已连接"));
+  };
+  ws.onclose = () => {
+    if (state.ws !== ws) return;
+    state.ws = null;
+    state.selected = null;
+    scheduleReconnect(viewer);
+  };
+  ws.onerror = () => {
+    if (state.ws === ws) ws.close();
+  };
+  ws.onmessage = e => onMessage(JSON.parse(e.data));
+}
+
+function clearReconnectTimer() {
+  if (!state.reconnectTimer) return;
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = null;
+}
+
+function scheduleReconnect(viewer) {
+  if (!state.code || (!viewer && !state.token)) return;
+  const delay = reconnectDelaysMs[Math.min(state.reconnectAttempts, reconnectDelaysMs.length - 1)];
+  state.reconnectAttempts += 1;
+  state.connectionStatus = "reconnecting";
+  state.connectionMessage = state.reconnectAttempts > 6 ? "连接断开，请确认房间还在" : `连接断开，${Math.ceil(delay / 1000)}秒后重连`;
+  log(viewer ? "观战已断开，正在重连" : "连接已断开，正在重连");
+  state.reconnectTimer = setTimeout(() => openSocket(viewer, true), delay);
+}
+
+function connectionReady() {
+  return state.ws && state.ws.readyState === WebSocket.OPEN;
+}
+
+function connectionBlockedText() {
+  return state.connectionMessage || (state.connectionStatus === "reconnecting" ? "正在重连，请稍候" : "尚未连接，正在重连");
 }
 
 async function viewerRoomStatus(code) {
@@ -1237,6 +1304,11 @@ function clickCell(cell) {
   const pieceId = pieceEl ? Number(pieceEl.dataset.piece) : 0;
   const owner = pieceEl ? Number(pieceEl.dataset.owner) : -1;
   if (!state.room) return;
+  if (["setup", "playing"].includes(state.room.phase) && !connectionReady()) {
+    log(connectionBlockedText());
+    if (!state.reconnectTimer) scheduleReconnect(state.viewer);
+    return;
+  }
   if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;
   if (state.room.phase === "setup" && state.selected && pieceId && owner === state.seat) {
     if (state.selected.row === row && state.selected.col === col) {
@@ -1274,8 +1346,9 @@ function send(msg) {
     log("观战中，不能操作对局");
     return;
   }
-  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-    log("尚未连接");
+  if (!connectionReady()) {
+    log(connectionBlockedText());
+    if (!state.reconnectTimer) scheduleReconnect(false);
     return;
   }
   msg.seq = state.seq++;

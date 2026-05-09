@@ -202,6 +202,32 @@ func TestSideActivityPanelsShowNewestFiveFirst(t *testing.T) {
 	}
 }
 
+func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
+	data, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(data)
+	for _, want := range []string{
+		`const reconnectDelaysMs = [1000, 2000, 5000, 10000];`,
+		`connectionStatusText()`,
+		`function openSocket(viewer, isReconnect = false)`,
+		`ws.onclose = () => {`,
+		`scheduleReconnect(viewer);`,
+		`state.connectionMessage = state.reconnectAttempts > 6 ? "连接断开，请确认房间还在"`,
+		`function connectionReady()`,
+		`function connectionBlockedText()`,
+		`if (["setup", "playing"].includes(state.room.phase) && !connectionReady())`,
+		`if (!state.reconnectTimer) scheduleReconnect(state.viewer);`,
+		`if (!state.reconnectTimer) scheduleReconnect(false);`,
+		`clearReconnectTimer();`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("client should reconnect websockets and explain disconnected clicks; missing %q", want)
+		}
+	}
+}
+
 func TestTurnFrontUsesDotOverlayInBothModes(t *testing.T) {
 	jsData, err := FS.ReadFile("dist/app.js")
 	if err != nil {
