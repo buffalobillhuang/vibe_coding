@@ -139,6 +139,64 @@ func TestJoinAssignsSystemNamesWhenBlank(t *testing.T) {
 	}
 }
 
+func TestReconnectDoesNotLetStaleDisconnectKillNewSocket(t *testing.T) {
+	r := New("ABC123")
+	player, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join() error = %v", err)
+	}
+
+	first, _, err := r.Connect(player.Token)
+	if err != nil {
+		t.Fatalf("Connect(first) error = %v", err)
+	}
+	drainMessages(first)
+
+	second, _, err := r.Connect(player.Token)
+	if err != nil {
+		t.Fatalf("Connect(second) error = %v", err)
+	}
+	drainMessages(second)
+
+	select {
+	case _, ok := <-first:
+		if ok {
+			t.Fatal("old connection should be closed when a new connection replaces it")
+		}
+	default:
+		t.Fatal("old connection should already be closed")
+	}
+
+	r.Disconnect(player.Token, first)
+	if !player.Connected {
+		t.Fatal("stale disconnect should not mark the player offline")
+	}
+
+	r.mu.Lock()
+	r.sendLocked(player.Token, protocol.ServerMessage{Type: "error", Error: &protocol.ErrorMessage{Code: "test", Message: "still-connected"}})
+	r.mu.Unlock()
+
+	select {
+	case <-second:
+	case <-time.After(time.Second):
+		t.Fatal("replacement connection did not receive server messages after stale disconnect")
+	}
+	drainMessages(second)
+
+	r.Disconnect(player.Token, second)
+	if player.Connected {
+		t.Fatal("active disconnect should mark the player offline")
+	}
+	select {
+	case _, ok := <-second:
+		if ok {
+			t.Fatal("replacement connection should be closed on active disconnect")
+		}
+	default:
+		t.Fatal("replacement connection should already be closed after active disconnect")
+	}
+}
+
 func TestFullSiguoLobbyPlayersCanSwapSeats(t *testing.T) {
 	r := New("ABC123")
 	north, err := r.Join("north", "")

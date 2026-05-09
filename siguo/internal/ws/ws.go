@@ -45,7 +45,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isViewer := r.URL.Query().Get("viewer") == "1"
-	var out <-chan []byte
+	var out chan []byte
 	var viewerID string
 	var err error
 	if isViewer {
@@ -67,7 +67,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if isViewer {
 			room.DisconnectViewer(viewerID)
 		} else {
-			room.Disconnect(token)
+			room.Disconnect(token, out)
 		}
 		return
 	}
@@ -75,7 +75,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isViewer {
 		defer room.DisconnectViewer(viewerID)
 	} else {
-		defer room.Disconnect(token)
+		defer room.Disconnect(token, out)
 	}
 
 	done := make(chan struct{})

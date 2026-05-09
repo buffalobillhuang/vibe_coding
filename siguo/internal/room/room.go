@@ -197,13 +197,16 @@ func (r *Room) ActiveSummary() (protocol.ActiveRoomInfo, bool) {
 	return info, true
 }
 
-func (r *Room) Connect(token string) (<-chan []byte, *Player, error) {
+func (r *Room) Connect(token string) (chan []byte, *Player, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	player := r.players[token]
 	if player == nil {
 		return nil, nil, errors.New("invalid session token")
+	}
+	if old := r.connections[token]; old != nil {
+		close(old)
 	}
 	ch := make(chan []byte, 32)
 	r.connections[token] = ch
@@ -214,7 +217,7 @@ func (r *Room) Connect(token string) (<-chan []byte, *Player, error) {
 	return ch, player, nil
 }
 
-func (r *Room) ConnectViewer() (<-chan []byte, string, error) {
+func (r *Room) ConnectViewer() (chan []byte, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.phase != PhaseSetup && r.phase != PhasePlaying {
@@ -232,16 +235,16 @@ func (r *Room) ConnectViewer() (<-chan []byte, string, error) {
 	return ch, id, nil
 }
 
-func (r *Room) Disconnect(token string) {
+func (r *Room) Disconnect(token string, target chan []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if ch := r.connections[token]; ch != nil {
+	if ch := r.connections[token]; ch != nil && ch == target {
 		close(ch)
 		delete(r.connections, token)
-	}
-	if player := r.players[token]; player != nil {
-		player.Connected = false
+		if player := r.players[token]; player != nil {
+			player.Connected = false
+		}
 	}
 	r.broadcastRoomLocked()
 }
