@@ -86,6 +86,9 @@ func canEnter(g *GameState, mover Piece, to Pos) bool {
 	if !occupied {
 		return true
 	}
+	if cell.Type == Mountain {
+		return mover.Rank == Engineer && target.Rank == Engineer && !g.sameSide(mover.Owner, target.Owner)
+	}
 	if g.sameSide(mover.Owner, target.Owner) {
 		return false
 	}
@@ -263,6 +266,13 @@ func sign(n int) int {
 	}
 }
 
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 func connectorTransition(pos Pos, dir Pos) (Pos, Pos, bool) {
 	switch pos {
 	case Pos{6, 6}:
@@ -336,23 +346,21 @@ func engineerRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Pos {
 	out := map[Pos][]Pos{}
 	visited := map[Pos]bool{}
 	var queue []node
-	enqueueRail := func(pos Pos, path []Pos) {
-		if visited[pos] || !g.isRailroad(pos) || !canEnter(g, mover, pos) {
-			return
-		}
-		visited[pos] = true
-		out[pos] = path
-		if _, occupied := g.PieceAt(pos); !occupied {
-			queue = append(queue, node{pos: pos, path: path})
-		}
-	}
 
 	if g.isRailroad(from) {
 		visited[from] = true
 		queue = append(queue, node{pos: from, path: []Pos{from}})
+		for _, mountain := range adjacentMountainCells(g.Mode, from) {
+			if canEnter(g, mover, mountain) {
+				out[mountain] = []Pos{from, mountain}
+			}
+		}
 	} else if g.boardCell(from).Type == Mountain {
-		for _, next := range adjacentRailCells(g.Mode, from) {
-			enqueueRail(next, []Pos{from, next})
+		for to, path := range adjacentMountainRailMoves(g, mover, from) {
+			out[to] = path
+		}
+		for _, rail := range emptyRailCells(g) {
+			out[rail] = []Pos{from, rail}
 		}
 	} else {
 		return out
@@ -363,10 +371,11 @@ func engineerRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Pos {
 		queue = queue[1:]
 
 		for _, mountain := range adjacentMountainCells(g.Mode, cur.pos) {
-			if !canEnter(g, mover, mountain) {
-				continue
+			if canEnter(g, mover, mountain) {
+				if _, seen := out[mountain]; !seen {
+					out[mountain] = append(append([]Pos(nil), cur.path...), mountain)
+				}
 			}
-			out[mountain] = append(append([]Pos(nil), cur.path...), mountain)
 		}
 
 		for _, next := range g.railroadAdj()[cur.pos] {
@@ -389,13 +398,45 @@ func engineerRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Pos {
 	return out
 }
 
+func adjacentMountainRailMoves(g *GameState, mover Piece, from Pos) map[Pos][]Pos {
+	out := map[Pos][]Pos{}
+	for _, to := range mountainCellsForMode(g.Mode) {
+		if !connectedMountains(from, to) || !canEnter(g, mover, to) {
+			continue
+		}
+		out[to] = []Pos{from, to}
+	}
+	return out
+}
+
+func emptyRailCells(g *GameState) []Pos {
+	var out []Pos
+	for r := 0; r < BoardSize; r++ {
+		for c := 0; c < BoardSize; c++ {
+			pos := Pos{r, c}
+			if !g.isRailroad(pos) {
+				continue
+			}
+			if _, occupied := g.PieceAt(pos); occupied {
+				continue
+			}
+			out = append(out, pos)
+		}
+	}
+	return out
+}
+
+func connectedMountains(a, b Pos) bool {
+	dr := abs(a.Row - b.Row)
+	dc := abs(a.Col - b.Col)
+	return dr <= 2 && dc <= 2 && (dr != 0 || dc != 0)
+}
+
 func junqiAdjacentMountainCells(pos Pos) []Pos {
 	seen := map[Pos]bool{}
 	for _, mountain := range junqiMountainCells() {
-		for _, side := range mountainRailSides(mountain) {
-			if side[0] == pos || side[1] == pos {
-				seen[mountain] = true
-			}
+		if adjacent(pos, mountain) {
+			seen[mountain] = true
 		}
 	}
 	out := make([]Pos, 0, len(seen))
@@ -408,10 +449,8 @@ func junqiAdjacentMountainCells(pos Pos) []Pos {
 func siguoAdjacentMountainCells(pos Pos) []Pos {
 	seen := map[Pos]bool{}
 	for _, mountain := range siguoMountainCells() {
-		for _, side := range mountainRailSides(mountain) {
-			if side[0] == pos || side[1] == pos {
-				seen[mountain] = true
-			}
+		if adjacent(pos, mountain) {
+			seen[mountain] = true
 		}
 	}
 	out := make([]Pos, 0, len(seen))
@@ -426,6 +465,13 @@ func adjacentMountainCells(mode GameMode, pos Pos) []Pos {
 		return junqiAdjacentMountainCells(pos)
 	}
 	return siguoAdjacentMountainCells(pos)
+}
+
+func mountainCellsForMode(mode GameMode) []Pos {
+	if mode == ModeJunqi {
+		return junqiMountainCells()
+	}
+	return siguoMountainCells()
 }
 
 func junqiAdjacentRailCells(pos Pos) []Pos {
@@ -446,9 +492,8 @@ func adjacentRailCellsFromMountain(mode GameMode, pos Pos) []Pos {
 			seen[p] = true
 		}
 	}
-	for _, side := range mountainRailSides(pos) {
-		add(side[0])
-		add(side[1])
+	for _, d := range eightDirs {
+		add(Pos{pos.Row + d.Row, pos.Col + d.Col})
 	}
 	out := make([]Pos, 0, len(seen))
 	for p := range seen {
@@ -461,13 +506,10 @@ func junqiMountainCells() []Pos {
 	return []Pos{{8, 7}, {8, 9}}
 }
 
-func mountainRailSides(pos Pos) [][2]Pos {
-	return [][2]Pos{
-		{{pos.Row - 1, pos.Col - 1}, {pos.Row - 1, pos.Col + 1}},
-		{{pos.Row - 1, pos.Col + 1}, {pos.Row + 1, pos.Col + 1}},
-		{{pos.Row + 1, pos.Col - 1}, {pos.Row + 1, pos.Col + 1}},
-		{{pos.Row - 1, pos.Col - 1}, {pos.Row + 1, pos.Col - 1}},
-	}
+func adjacent(a, b Pos) bool {
+	dr := abs(a.Row - b.Row)
+	dc := abs(a.Col - b.Col)
+	return dr <= 1 && dc <= 1 && (dr != 0 || dc != 0)
 }
 
 func adjacentRailCells(mode GameMode, pos Pos) []Pos {

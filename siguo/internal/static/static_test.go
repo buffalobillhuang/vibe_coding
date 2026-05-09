@@ -37,6 +37,61 @@ func TestJunqiSpecialCellsDoNotShrinkPieces(t *testing.T) {
 	}
 }
 
+func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
+	cssData, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(cssData)
+	if strings.Contains(css, ".piece-hidden::after") {
+		t.Fatalf("hidden piece backs should not render the old ellipse pseudo-element")
+	}
+	for _, want := range []string{
+		".piece-mark {\n  position: absolute;",
+		".marker-picker {\n  position: absolute;",
+		".marker-choice:hover,\n.marker-choice.on {",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("piece marker UI styling missing %q", want)
+		}
+	}
+
+	jsData, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(jsData)
+	for _, want := range []string{
+		`const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];`,
+		`const pieceMarkerActions = [...pieceMarkerValues, "unmark"];`,
+		`${label}${pieceMarkHTML(marker)}`,
+		`if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;`,
+		`if (!alive.has(id)) delete state.pieceMarks[id];`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("piece marker behavior missing %q", want)
+		}
+	}
+}
+
+func TestMoveTrailClearsOutsideActivePlay(t *testing.T) {
+	data, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(data)
+	for _, want := range []string{
+		`clearInactiveMoveTrail();`,
+		`if (type === "gameEnded") state.lastTrail = null;`,
+		`function clearInactiveMoveTrail() {`,
+		`state.room.phase !== "playing"`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("move trail should clear after game end and outside active play; missing %q", want)
+		}
+	}
+}
+
 func TestPlayerTickersTouchTerritoryEdgesWithoutOverlap(t *testing.T) {
 	data, err := FS.ReadFile("dist/app.css")
 	if err != nil {

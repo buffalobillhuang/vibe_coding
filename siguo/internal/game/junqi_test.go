@@ -199,7 +199,46 @@ func TestJunqiEngineerCanRailMoveToMountainCells(t *testing.T) {
 	}
 }
 
-func TestJunqiEngineerOnMountainCanFlyFromFourRailSides(t *testing.T) {
+func TestJunqiEngineerCanEnterMountainFromEveryAdjacentRailStation(t *testing.T) {
+	tests := []struct {
+		from Pos
+		to   Pos
+	}{
+		{Pos{7, 8}, Pos{8, 9}},
+		{Pos{7, 10}, Pos{8, 9}},
+		{Pos{8, 8}, Pos{8, 9}},
+		{Pos{8, 10}, Pos{8, 9}},
+		{Pos{9, 8}, Pos{8, 9}},
+		{Pos{9, 10}, Pos{8, 9}},
+	}
+	for _, tt := range tests {
+		g := testStateForMode(t, ModeJunqi,
+			[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+			map[PieceID]Pos{1: tt.from},
+			North,
+		)
+		if !hasMove(LegalMoves(g, 1), tt.to) {
+			t.Fatalf("engineer at adjacent rail %v should enter mountain %v", tt.from, tt.to)
+		}
+	}
+}
+
+func TestJunqiEngineerCanRailFlyThenEnterMountain(t *testing.T) {
+	g := testStateForMode(t, ModeJunqi,
+		[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+		map[PieceID]Pos{1: {3, 10}},
+		North,
+	)
+	move, ok := moveTo(LegalMoves(g, 1), Pos{8, 9})
+	if !ok {
+		t.Fatalf("engineer should rail-fly to a mountain-side track and enter mountain")
+	}
+	if len(move.Path) < 3 || move.Path[0] != (Pos{3, 10}) || move.Path[len(move.Path)-1] != (Pos{8, 9}) {
+		t.Fatalf("expected rail path into mountain, got %v", move.Path)
+	}
+}
+
+func TestJunqiEngineerOnMountainCanAirDropToEmptyRail(t *testing.T) {
 	tests := []struct {
 		name string
 		from Pos
@@ -220,14 +259,48 @@ func TestJunqiEngineerOnMountainCanFlyFromFourRailSides(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected engineer on mountain %v to fly to rail %v", tt.from, tt.to)
 			}
-			if len(move.Path) < 2 || move.Path[0] != tt.from || move.Path[len(move.Path)-1] != tt.to {
-				t.Fatalf("expected rail path from mountain %v to %v, got %v", tt.from, tt.to, move.Path)
+			if len(move.Path) != 2 || move.Path[0] != tt.from || move.Path[1] != tt.to {
+				t.Fatalf("expected one-step air-drop from mountain %v to rail %v, got %v", tt.from, tt.to, move.Path)
 			}
 		})
 	}
 }
 
-func TestJunqiEngineerOnMountainCanAttackSideBlockersButNotPassThem(t *testing.T) {
+func TestJunqiEngineerCanFlyBetweenAdjacentMountains(t *testing.T) {
+	g := testStateForMode(t, ModeJunqi,
+		[]Piece{{ID: 1, Owner: North, Rank: Engineer, Alive: true}},
+		map[PieceID]Pos{1: {8, 7}},
+		North,
+	)
+	move, ok := moveTo(LegalMoves(g, 1), Pos{8, 9})
+	if !ok {
+		t.Fatalf("expected engineer to fly between adjacent mountain gaps")
+	}
+	if len(move.Path) != 2 || move.Path[0] != (Pos{8, 7}) || move.Path[1] != (Pos{8, 9}) {
+		t.Fatalf("expected mountain tunnel path, got %v", move.Path)
+	}
+}
+
+func TestJunqiEngineerCanFlyBetweenAdjacentMountainsThroughTunnelWithBlockedRail(t *testing.T) {
+	g := testStateForMode(t, ModeJunqi,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
+			{ID: 2, Owner: South, Rank: PlatoonLeader, Alive: true},
+			{ID: 3, Owner: South, Rank: CompanyCommander, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {8, 7},
+			2: {7, 8},
+			3: {9, 8},
+		},
+		North,
+	)
+	if !hasMove(LegalMoves(g, 1), Pos{8, 9}) {
+		t.Fatalf("engineer should fly between mountain gaps through the tunnel even when rail points are blocked")
+	}
+}
+
+func TestJunqiEngineerOnMountainCannotLandOnOccupiedRail(t *testing.T) {
 	g := testStateForMode(t, ModeJunqi,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
@@ -249,16 +322,16 @@ func TestJunqiEngineerOnMountainCanAttackSideBlockersButNotPassThem(t *testing.T
 	)
 	moves := LegalMoves(g, 1)
 	for _, blocker := range []Pos{{7, 6}, {7, 8}, {9, 6}, {9, 8}} {
-		if !hasMove(moves, blocker) {
-			t.Fatalf("engineer on mountain should be able to attack side blocker %v", blocker)
+		if hasMove(moves, blocker) {
+			t.Fatalf("engineer should not attack occupied rail when leaving mountain: %v", blocker)
 		}
 	}
-	if hasMove(moves, Pos{6, 6}) {
-		t.Fatalf("engineer should not pass through occupied mountain-side rail blockers")
+	if !hasMove(moves, Pos{13, 10}) {
+		t.Fatalf("engineer should still air-drop to any empty rail station")
 	}
 }
 
-func TestJunqiEngineersCanTradeOnMountainCell(t *testing.T) {
+func TestJunqiEngineerCanAttackEnemyEngineerInMountain(t *testing.T) {
 	g := testStateForMode(t, ModeJunqi,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Engineer, Alive: true},
@@ -275,6 +348,9 @@ func TestJunqiEngineersCanTradeOnMountainCell(t *testing.T) {
 		North,
 	)
 
+	if !hasMove(LegalMoves(g, 1), Pos{8, 7}) {
+		t.Fatalf("engineer should be able to attack enemy engineer in mountain")
+	}
 	next, events, err := ApplyMove(g, Move{PieceID: 1, From: Pos{7, 8}, To: Pos{8, 7}})
 	if err != nil {
 		t.Fatalf("ApplyMove() error = %v", err)
@@ -284,6 +360,26 @@ func TestJunqiEngineersCanTradeOnMountainCell(t *testing.T) {
 	}
 	if next.Pieces[1].Alive || next.Pieces[2].Alive {
 		t.Fatalf("engineers alive = %v/%v, want both dead", next.Pieces[1].Alive, next.Pieces[2].Alive)
+	}
+}
+
+func TestJunqiNonEngineerCannotAttackEngineerInMountain(t *testing.T) {
+	g := testStateForMode(t, ModeJunqi,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Bomb, Alive: true},
+			{ID: 2, Owner: South, Rank: Engineer, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {7, 8},
+			2: {8, 7},
+		},
+		North,
+	)
+	if hasMove(LegalMoves(g, 1), Pos{8, 7}) {
+		t.Fatalf("non-engineer should not attack engineer in mountain")
+	}
+	if _, _, err := ApplyMove(g, Move{PieceID: 1, From: Pos{7, 8}, To: Pos{8, 7}}); err == nil {
+		t.Fatalf("non-engineer attacking engineer in mountain should be illegal")
 	}
 }
 

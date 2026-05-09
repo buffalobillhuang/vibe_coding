@@ -28,6 +28,8 @@ const quickChatPhrases = [
   "你太牛了",
   "掐死你 ：-/"
 ];
+const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
+const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -49,6 +51,8 @@ const state = {
   setupMusicBlocked: false,
   combat: null,
   lastTrail: null,
+  selectedMarker: null,
+  pieceMarks: {},
   log: [],
   chat: [],
   lowTimeWarned: false,
@@ -297,8 +301,17 @@ function activeSeats() {
   return currentMode() === "junqi" ? [0, 2] : [0, 1, 2, 3];
 }
 
+function viewCells() {
+  return state.view?.Cells || state.view?.cells || [];
+}
+
+function pieceId(piece) {
+  return piece?.ID ?? piece?.id ?? 0;
+}
+
 function boardHTML() {
-  const cells = new Map((state.view?.Cells || state.view?.cells || []).map(c => [`${c.Pos?.Row ?? c.pos.row},${c.Pos?.Col ?? c.pos.col}`, c]));
+  prunePieceMarks();
+  const cells = new Map(viewCells().map(c => [`${c.Pos?.Row ?? c.pos.row},${c.Pos?.Col ?? c.pos.col}`, c]));
   const mode = currentMode();
   const rows = mode === "junqi" ? 13 : 17;
   const cols = mode === "junqi" ? 5 : 17;
@@ -327,7 +340,8 @@ function boardHTML() {
         const hiddenClass = rank === 0 ? "piece-hidden" : "";
         const orientClass = `piece-rel-${relativeSeat(owner)}`;
         const label = rank === 0 ? "" : (rankNames[rank] || "?");
-        html += `<div class="piece ${colorClass} ${hiddenClass} ${orientClass} ${exposedClass}" data-piece="${piece.ID ?? piece.id}" data-owner="${owner}">${label}</div>`;
+        const marker = state.pieceMarks[pieceId(piece)];
+        html += `<div class="piece ${colorClass} ${hiddenClass} ${orientClass} ${exposedClass}" data-piece="${pieceId(piece)}" data-owner="${owner}">${label}${pieceMarkHTML(marker)}</div>`;
       }
       const riverLabel = mode === "junqi" ? junqiRiverLabel(displayRow, displayCol) : centralRiverLabel(displayRow, displayCol);
       if (riverLabel) {
@@ -337,6 +351,23 @@ function boardHTML() {
     }
   }
   return html + `${boardClose}${deadTrayHTML()}</div>`;
+}
+
+function pieceMarkHTML(marker) {
+  if (!marker) return "";
+  const longClass = marker.length > 3 ? " piece-mark-long" : "";
+  return `<span class="piece-mark${longClass}">${esc(marker)}</span>`;
+}
+
+function prunePieceMarks() {
+  const alive = new Set();
+  viewCells().forEach(c => {
+    const id = pieceId(c?.Piece || c?.piece);
+    if (id) alive.add(String(id));
+  });
+  Object.keys(state.pieceMarks).forEach(id => {
+    if (!alive.has(id)) delete state.pieceMarks[id];
+  });
 }
 
 function deadTrayHTML() {
@@ -487,6 +518,13 @@ function pieceColorClass(owner) {
   return seatPieceClasses[owner] || "piece-blue";
 }
 
+function markerPickerHTML(seat, isElim) {
+  if (state.viewer || seat !== state.seat || isElim || !["setup", "playing"].includes(state.room?.phase)) return "";
+  return `<div class="marker-picker" aria-label="棋子标记">
+    ${pieceMarkerActions.map(marker => `<button type="button" class="marker-choice ${state.selectedMarker === marker ? "on" : ""}" data-marker="${esc(marker)}">${esc(marker)}</button>`).join("")}
+  </div>`;
+}
+
 function playerTickersHTML() {
   if (!state.room) return "";
   const phase = state.room.phase;
@@ -508,6 +546,7 @@ function playerTickersHTML() {
     const canSkip = !state.viewer && isJunqi && phase === "playing" && seat === state.seat && seat === turn && used < maxSkips && !isElim && !reqPending;
     const orient = `ticker-rel-${relativeSeat(seat)}`;
     return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""}" data-seat="${seat}">
+      ${markerPickerHTML(seat, isElim)}
       <div class="ticker-head">
         <span class="ticker-seat">${seatNames[seat]}</span>
         <span class="ticker-turn-logo" aria-label="行动方"></span>
@@ -797,6 +836,10 @@ function bind() {
   if (sendTeamBtn) sendTeamBtn.onclick = () => sendChat("team");
   document.querySelectorAll(".quick-chat-btn").forEach(btn => btn.onclick = () => fillQuickChat(btn.dataset.phrase));
   document.querySelectorAll(".seat-swap-btn").forEach(btn => btn.onclick = () => swapSeat(btn.dataset.seat));
+  document.querySelectorAll(".marker-choice").forEach(btn => btn.onclick = e => {
+    e.stopPropagation();
+    selectPieceMarker(btn.dataset.marker);
+  });
   document.querySelector("#modeSiguo").onclick = () => setMode("siguo");
   document.querySelector("#modeJunqi").onclick = () => setMode("junqi");
   const skipBtn = document.querySelector("#skipBtn");
@@ -957,6 +1000,8 @@ function leaveEndedRoom(shouldRender = true) {
   state.watchOpen = false;
   state.joinOffer = null;
   state.selected = null;
+  state.selectedMarker = null;
+  state.pieceMarks = {};
   state.combat = null;
   localStorage.removeItem("siguo.code");
   localStorage.removeItem("siguo.token");
@@ -998,6 +1043,8 @@ async function acceptJoin(res, opts = {}) {
   state.viewer = false;
   state.watchOpen = false;
   state.joinOffer = null;
+  state.selectedMarker = null;
+  state.pieceMarks = {};
   localStorage.setItem("siguo.code", state.code);
   localStorage.setItem("siguo.token", state.token);
   localStorage.setItem("siguo.seat", String(state.seat));
@@ -1052,6 +1099,8 @@ async function connectViewer(code) {
   state.host = false;
   state.seat = 2;
   state.selected = null;
+  state.selectedMarker = null;
+  state.pieceMarks = {};
   state.combat = null;
   localStorage.removeItem("siguo.code");
   localStorage.removeItem("siguo.token");
@@ -1085,8 +1134,10 @@ function onMessage(msg) {
       localStorage.setItem("siguo.mode", state.mode);
     }
     state.view = msg.room?.view || state.view;
+    clearInactiveMoveTrail();
   } else if (msg.type === "view") {
     state.view = msg.view;
+    clearInactiveMoveTrail();
   } else if (msg.type === "chat.msg") {
     state.chat.push(msg.chat);
   } else if (msg.type === "error") {
@@ -1096,6 +1147,39 @@ function onMessage(msg) {
     log(eventText(msg.event));
   }
   render();
+}
+
+function selectPieceMarker(marker) {
+  state.selectedMarker = state.selectedMarker === marker ? null : marker;
+  state.selected = null;
+  render();
+}
+
+function handleMarkerClick(pieceId, owner) {
+  const marker = state.selectedMarker;
+  if (!marker) return false;
+  if (!pieceId) {
+    log("请选择要标记的对方棋子");
+    return true;
+  }
+  if (marker === "unmark") {
+    if (state.pieceMarks[pieceId]) {
+      delete state.pieceMarks[pieceId];
+      state.selectedMarker = null;
+      render();
+    } else {
+      log("该棋子没有标记");
+    }
+    return true;
+  }
+  if (sameSide(owner, state.seat)) {
+    log("只能标记对方棋子");
+    return true;
+  }
+  state.pieceMarks[pieceId] = marker;
+  state.selectedMarker = null;
+  render();
+  return true;
 }
 
 function clickCell(cell) {
@@ -1110,6 +1194,7 @@ function clickCell(cell) {
   const pieceId = pieceEl ? Number(pieceEl.dataset.piece) : 0;
   const owner = pieceEl ? Number(pieceEl.dataset.owner) : -1;
   if (!state.room) return;
+  if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;
   if (state.room.phase === "setup" && state.selected && pieceId && owner === state.seat) {
     if (state.selected.row === row && state.selected.col === col) {
       state.selected = null;
@@ -1187,6 +1272,7 @@ function handleEventEffect(ev) {
   const type = ev.Type || ev.type;
   const to = ev.To || ev.to;
   if (type === "move" || type === "combat") setLastMoveTrail(ev);
+  if (type === "gameEnded") state.lastTrail = null;
   if (type === "combat") {
     const row = to?.Row ?? to?.row;
     const col = to?.Col ?? to?.col;
@@ -1200,6 +1286,12 @@ function handleEventEffect(ev) {
     playMove();
   } else if (type === "flagCaptured") {
     playFlag();
+  }
+}
+
+function clearInactiveMoveTrail() {
+  if (state.room?.phase && state.room.phase !== "playing") {
+    state.lastTrail = null;
   }
 }
 

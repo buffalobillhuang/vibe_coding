@@ -336,6 +336,7 @@ func isRailroadCell(b [BoardSize][BoardSize]Cell, p Pos) bool {
 
 var orthogonalDirs = []Pos{{-1, 0}, {0, 1}, {1, 0}, {0, -1}}
 var diagonalDirs = []Pos{{-1, -1}, {-1, 1}, {1, 1}, {1, -1}}
+var eightDirs = []Pos{{-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}}
 
 func railConnectorPairs() map[Pos]Pos {
 	pairs := map[Pos]Pos{}
