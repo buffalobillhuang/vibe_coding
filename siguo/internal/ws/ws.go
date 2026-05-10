@@ -51,11 +51,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isViewer := r.URL.Query().Get("viewer") == "1"
+	viewerName := r.URL.Query().Get("name")
 	var out chan []byte
 	var viewerID string
 	var err error
 	if isViewer {
-		out, viewerID, err = room.ConnectViewer()
+		out, viewerID, err = room.ConnectViewer(viewerName)
 	} else {
 		if token == "" {
 			http.Error(w, "room not found", http.StatusNotFound)

@@ -236,15 +236,19 @@ func TestViewForOnlyIncludesViewerDeadPieces(t *testing.T) {
 	}
 }
 
-func TestViewForSpectatorIncludesAllDeadPieces(t *testing.T) {
+func TestViewForSpectatorIncludesDeadPiecesDuringActivePlay(t *testing.T) {
 	g := testState(t,
 		[]Piece{
 			{ID: 1, Owner: North, Rank: Commander, Alive: true},
 			{ID: 2, Owner: East, Rank: Engineer, Alive: true},
+			{ID: 3, Owner: West, Rank: Commander, Alive: true},
+			{ID: 4, Owner: South, Rank: Engineer, Alive: true},
 		},
 		map[PieceID]Pos{
 			1: {1, 8},
 			2: {2, 8},
+			3: {8, 1},
+			4: {8, 2},
 		},
 		North,
 	)
@@ -253,13 +257,26 @@ func TestViewForSpectatorIncludesAllDeadPieces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMove() error = %v", err)
 	}
-	view := next.ViewForSpectator()
-	if len(view.DeadPieces) != 1 {
-		t.Fatalf("spectator dead pieces = %v, want one", view.DeadPieces)
+	next, _, err = ApplyMove(next, Move{PieceID: 3, From: Pos{8, 1}, To: Pos{8, 2}})
+	if err != nil {
+		t.Fatalf("ApplyMove() second combat error = %v", err)
 	}
-	dead := view.DeadPieces[0]
-	if dead.Owner != East || dead.Rank != Engineer {
-		t.Fatalf("spectator dead piece = %+v, want east engineer", dead)
+	view := next.ViewForSpectator()
+	if len(view.DeadPieces) != 2 {
+		t.Fatalf("spectator dead pieces during active play = %v, want two", view.DeadPieces)
+	}
+	seen := map[Seat]Rank{}
+	for _, dead := range view.DeadPieces {
+		seen[dead.Owner] = dead.Rank
+	}
+	if seen[East] != Engineer || seen[South] != Engineer {
+		t.Fatalf("spectator dead pieces during active play = %+v, want east and south engineers", view.DeadPieces)
+	}
+
+	next.Phase = Ended
+	view = next.ViewForSpectator()
+	if len(view.DeadPieces) != 2 {
+		t.Fatalf("spectator dead pieces after end = %v, want two", view.DeadPieces)
 	}
 }
 

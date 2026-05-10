@@ -3,6 +3,7 @@ package room
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -63,18 +64,31 @@ func TestConnectViewerCapsAtMaxViewers(t *testing.T) {
 	r := newPlayingRoom(t)
 	var viewerIDs []string
 	for i := 0; i < MaxViewers; i++ {
-		_, id, err := r.ConnectViewer()
+		_, id, err := r.ConnectViewer(fmt.Sprintf("viewer%d", i+1))
 		if err != nil {
 			t.Fatalf("ConnectViewer(%d) error = %v", i, err)
 		}
 		viewerIDs = append(viewerIDs, id)
 	}
-	if _, _, err := r.ConnectViewer(); !errors.Is(err, ErrViewersFull) {
+	if _, _, err := r.ConnectViewer("overflow-viewer"); !errors.Is(err, ErrViewersFull) {
 		t.Fatalf("ConnectViewer() error = %v, want ErrViewersFull", err)
 	}
 	r.DisconnectViewer(viewerIDs[0])
-	if _, _, err := r.ConnectViewer(); err != nil {
+	if _, _, err := r.ConnectViewer("replacement-viewer"); err != nil {
 		t.Fatalf("ConnectViewer() after disconnect error = %v", err)
+	}
+}
+
+func TestConnectViewerRejectsPlayerName(t *testing.T) {
+	r := newPlayingRoom(t)
+	if _, _, err := r.ConnectViewer(" north "); !errors.Is(err, ErrViewerNameConflict) {
+		t.Fatalf("ConnectViewer(player name) error = %v, want ErrViewerNameConflict", err)
+	}
+	if _, _, err := r.ConnectViewer("   "); !errors.Is(err, ErrViewerNameRequired) {
+		t.Fatalf("ConnectViewer(blank) error = %v, want ErrViewerNameRequired", err)
+	}
+	if _, _, err := r.ConnectViewer("observer"); err != nil {
+		t.Fatalf("ConnectViewer(observer) error = %v", err)
 	}
 }
 

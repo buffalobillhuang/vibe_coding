@@ -29,6 +29,8 @@ const (
 
 var ErrRoomFull = errors.New("room is full")
 var ErrViewersFull = errors.New("viewer room is full")
+var ErrViewerNameRequired = errors.New("viewer name is required")
+var ErrViewerNameConflict = errors.New("player name cannot join as viewer")
 
 const MaxViewers = 10
 
@@ -217,11 +219,18 @@ func (r *Room) Connect(token string) (chan []byte, *Player, error) {
 	return ch, player, nil
 }
 
-func (r *Room) ConnectViewer() (chan []byte, string, error) {
+func (r *Room) ConnectViewer(name string) (chan []byte, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.phase != PhaseSetup && r.phase != PhasePlaying {
 		return nil, "", errors.New("game is not active")
+	}
+	name = cleanName(name)
+	if name == "" {
+		return nil, "", ErrViewerNameRequired
+	}
+	if r.viewerNameConflictsPlayerLocked(name) {
+		return nil, "", ErrViewerNameConflict
 	}
 	if len(r.viewers) >= MaxViewers {
 		return nil, "", ErrViewersFull
@@ -1362,6 +1371,15 @@ func cleanName(name string) string {
 		name = string(runes[:16])
 	}
 	return name
+}
+
+func (r *Room) viewerNameConflictsPlayerLocked(name string) bool {
+	for _, player := range r.players {
+		if strings.EqualFold(cleanName(player.Name), name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Room) defaultPlayerNameLocked() string {

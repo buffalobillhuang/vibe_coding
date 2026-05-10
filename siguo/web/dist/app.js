@@ -1187,6 +1187,9 @@ function connect() {
 
 async function connectViewer(code) {
   code = String(code || "").toUpperCase();
+  const nameInput = document.querySelector("#name");
+  state.name = (nameInput ? nameInput.value : state.name || "").trim();
+  localStorage.setItem("siguo.name", state.name);
   const status = await viewerRoomStatus(code);
   if (!status.ok) {
     log(status.message);
@@ -1220,7 +1223,9 @@ function openSocket(viewer, isReconnect = false) {
     state.ws.close();
   }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const query = viewer ? `room=${state.code}&viewer=1` : `room=${state.code}&token=${encodeURIComponent(state.token)}`;
+  const query = viewer
+    ? `room=${state.code}&viewer=1&name=${encodeURIComponent(state.name)}`
+    : `room=${state.code}&token=${encodeURIComponent(state.token)}`;
   const ws = new WebSocket(`${proto}://${location.host}/ws?${query}`);
   state.ws = ws;
   state.lastSocketMessageAt = 0;
@@ -1290,11 +1295,21 @@ function checkSocketHealth() {
 }
 
 async function viewerRoomStatus(code) {
+  const viewerName = (state.name || "").trim();
+  if (!viewerName) {
+    return {ok: false, message: "请输入昵称后再观战"};
+  }
+  if (state.token && state.code === code && !state.viewer) {
+    return {ok: false, message: "当前玩家不能同时观战自己的对局"};
+  }
   const res = await fetch("/api/rooms");
   if (!res.ok) return {ok: false, message: `错误：${await responseErrorText(res)}`};
   const data = await res.json();
   const room = (data.rooms || []).find(r => String(r.code).toUpperCase() === code);
   if (!room) return {ok: false, message: "对局不在进行中"};
+  if ((room.seats || []).some(s => ((s.name || "").trim().toLowerCase() === viewerName.toLowerCase()))) {
+    return {ok: false, message: "当前昵称已在该对局中落座，不能同时观战"};
+  }
   if (!room.canJoinView) return {ok: false, message: "观战席已满，请稍后再试"};
   return {ok: true};
 }
