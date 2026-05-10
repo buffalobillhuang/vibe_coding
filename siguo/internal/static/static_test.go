@@ -210,17 +210,24 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 	js := string(data)
 	for _, want := range []string{
 		`const reconnectDelaysMs = [1000, 2000, 5000, 10000];`,
+		`const socketWatchdogIntervalMs = 5000;`,
+		`const socketHeartbeatTimeoutMs = 45000;`,
 		`connectionStatusText()`,
 		`function openSocket(viewer, isReconnect = false)`,
+		`state.lastSocketMessageAt = Date.now();`,
 		`ws.onclose = () => {`,
 		`scheduleReconnect(viewer);`,
 		`state.connectionMessage = state.reconnectAttempts > 6 ? "连接断开，请确认房间还在"`,
 		`function connectionReady()`,
 		`function connectionBlockedText()`,
+		`function checkSocketHealth()`,
+		`log("连接疑似卡死，正在重连");`,
+		`if (msg.type === "heartbeat") return;`,
 		`if (["setup", "playing"].includes(state.room.phase) && !connectionReady())`,
 		`if (!state.reconnectTimer) scheduleReconnect(state.viewer);`,
 		`if (!state.reconnectTimer) scheduleReconnect(false);`,
 		`clearReconnectTimer();`,
+		`setInterval(checkSocketHealth, socketWatchdogIntervalMs);`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("client should reconnect websockets and explain disconnected clicks; missing %q", want)

@@ -21,7 +21,13 @@ const (
 	opClose = 8
 	opPing  = 9
 	opPong  = 10
+
+	pingInterval = 20 * time.Second
+	pongWait     = 45 * time.Second
+	writeWait    = 10 * time.Second
 )
+
+var heartbeatPayload = []byte(`{"type":"heartbeat"}`)
 
 type Handler struct {
 	Hub         *hub.Hub
@@ -77,30 +83,42 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		defer room.Disconnect(token, out)
 	}
+	refreshReadDeadline := func() {
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	}
 
 	done := make(chan struct{})
 	var writeMu sync.Mutex
 	safeWrite := func(op byte, payload []byte) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 		return writeFrame(rw, op, payload)
 	}
+	refreshReadDeadline()
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(20 * time.Second)
+		ticker := time.NewTicker(pingInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case msg, ok := <-out:
 				if !ok {
 					_ = safeWrite(opClose, nil)
+					_ = conn.Close()
 					return
 				}
 				if err := safeWrite(opText, msg); err != nil {
+					_ = conn.Close()
 					return
 				}
 			case <-ticker.C:
 				if err := safeWrite(opPing, []byte("ping")); err != nil {
+					_ = conn.Close()
+					return
+				}
+				if err := safeWrite(opText, heartbeatPayload); err != nil {
+					_ = conn.Close()
 					return
 				}
 			}
@@ -112,6 +130,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
+		refreshReadDeadline()
 		switch op {
 		case opText:
 			if !isViewer {

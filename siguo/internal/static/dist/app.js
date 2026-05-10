@@ -30,6 +30,8 @@ const quickChatPhrases = [
 ];
 const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
+const socketWatchdogIntervalMs = 5000;
+const socketHeartbeatTimeoutMs = 45000;
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -63,7 +65,8 @@ const state = {
   connectionStatus: "idle",
   connectionMessage: "",
   reconnectAttempts: 0,
-  reconnectTimer: null
+  reconnectTimer: null,
+  lastSocketMessageAt: 0
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
@@ -1051,6 +1054,7 @@ function leaveEndedRoom(shouldRender = true) {
     state.ws.close();
   }
   state.ws = null;
+  state.lastSocketMessageAt = 0;
   state.connectionStatus = "idle";
   state.connectionMessage = "";
   state.reconnectAttempts = 0;
@@ -1176,11 +1180,13 @@ function openSocket(viewer, isReconnect = false) {
   const query = viewer ? `room=${state.code}&viewer=1` : `room=${state.code}&token=${encodeURIComponent(state.token)}`;
   const ws = new WebSocket(`${proto}://${location.host}/ws?${query}`);
   state.ws = ws;
+  state.lastSocketMessageAt = 0;
   state.connectionStatus = isReconnect ? "reconnecting" : "connecting";
   state.connectionMessage = isReconnect ? "正在重连" : "连接中";
   render();
   ws.onopen = () => {
     if (state.ws !== ws) return;
+    state.lastSocketMessageAt = Date.now();
     state.connectionStatus = "connected";
     state.connectionMessage = "";
     state.reconnectAttempts = 0;
@@ -1189,13 +1195,18 @@ function openSocket(viewer, isReconnect = false) {
   ws.onclose = () => {
     if (state.ws !== ws) return;
     state.ws = null;
+    state.lastSocketMessageAt = 0;
     state.selected = null;
     scheduleReconnect(viewer);
   };
   ws.onerror = () => {
     if (state.ws === ws) ws.close();
   };
-  ws.onmessage = e => onMessage(JSON.parse(e.data));
+  ws.onmessage = e => {
+    if (state.ws !== ws) return;
+    state.lastSocketMessageAt = Date.now();
+    onMessage(JSON.parse(e.data));
+  };
 }
 
 function clearReconnectTimer() {
@@ -1222,6 +1233,16 @@ function connectionBlockedText() {
   return state.connectionMessage || (state.connectionStatus === "reconnecting" ? "正在重连，请稍候" : "尚未连接，正在重连");
 }
 
+function checkSocketHealth() {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (Date.now() - state.lastSocketMessageAt < socketHeartbeatTimeoutMs) return;
+  log("连接疑似卡死，正在重连");
+  state.connectionStatus = "reconnecting";
+  state.connectionMessage = "连接卡住，正在重连";
+  render();
+  state.ws.close();
+}
+
 async function viewerRoomStatus(code) {
   const res = await fetch("/api/rooms");
   if (!res.ok) return {ok: false, message: `错误：${await responseErrorText(res)}`};
@@ -1233,6 +1254,7 @@ async function viewerRoomStatus(code) {
 }
 
 function onMessage(msg) {
+  if (msg.type === "heartbeat") return;
   if (msg.type === "room.state") {
     state.room = msg.room;
     if (!state.viewer && typeof msg.room?.selfSeat === "number") {
@@ -1536,6 +1558,7 @@ function esc(s) {
 
 render();
 setInterval(tickTimer, 200);
+setInterval(checkSocketHealth, socketWatchdogIntervalMs);
 const initialParams = new URLSearchParams(location.search);
 const initialWatchCode = initialParams.get("watch");
 const initialJoinCode = initialParams.get("join");
