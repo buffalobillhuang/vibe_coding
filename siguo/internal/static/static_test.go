@@ -217,7 +217,10 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 		`state.lastSocketMessageAt = Date.now();`,
 		`ws.onclose = () => {`,
 		`scheduleReconnect(viewer);`,
+		`const shouldLogDisconnect = state.connectionStatus !== "reconnecting";`,
 		`state.connectionMessage = state.reconnectAttempts > 6 ? "连接断开，请确认房间还在"`,
+		`if (shouldLogDisconnect) {`,
+		`log(viewer ? "观战已断开，正在重连" : "连接已断开，正在重连");`,
 		`function connectionReady()`,
 		`function connectionBlockedText()`,
 		`function checkSocketHealth()`,
@@ -235,35 +238,30 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 	}
 }
 
-func TestBoardCoverUsesPictureAndRevealsOnGameStart(t *testing.T) {
+func TestBoardWrapCentersBoardStage(t *testing.T) {
 	jsData, err := FS.ReadFile("dist/app.js")
 	if err != nil {
 		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
 	}
 	js := string(jsData)
-	for _, want := range []string{
+	if !strings.Contains(js, `<div class="board-wrap">${victoryHTML()}${boardHTML()}</div>`) {
+		t.Fatalf("board wrap should render only victory and board markup")
+	}
+	for _, old := range []string{
 		`boardCoverVisible: true,`,
-		`boardCoverImageLoaded: false,`,
-		`<div class="board-wrap ${boardCoverLocksBoard() ? "board-wrap-cover-locked" : ""}">${boardCoverHTML()}${victoryHTML()}${boardHTML()}</div>`,
 		`function boardCoverHTML()`,
 		`function warmBoardCoverImage()`,
-		`const img = new Image();`,
-		`img.decoding = "async";`,
 		`function boardCoverLocksBoard()`,
-		`return state.boardCoverVisible && !state.boardCoverDissolving;`,
-		`src="/picture01.png"`,
-		`board-cover-panel ${state.boardCoverImageLoaded ? "is-loaded" : "is-loading"}`,
 		`function resetBoardCover(show = true)`,
-		`state.boardCoverSawLobby = true;`,
 		`function startBoardCoverReveal()`,
-		`}, 5000);`,
 		`function updateBoardCover(nextRoom)`,
-		`if (phase === "lobby") {`,
-		`if (phase === "setup" || phase === "playing") {`,
-		`updateBoardCover(msg.room);`,
+		`src="/picture01.png"`,
+		`封面图加载超时`,
+		`封面图加载完成`,
+		`封面图加载失败，重试中`,
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("board cover launch behavior missing %q", want)
+		if strings.Contains(js, old) {
+			t.Fatalf("board cover code should be removed; found %q", old)
 		}
 	}
 
@@ -273,23 +271,26 @@ func TestBoardCoverUsesPictureAndRevealsOnGameStart(t *testing.T) {
 	}
 	css := string(cssData)
 	for _, want := range []string{
+		`.board-wrap {`,
+		`width: 100%;`,
+		`.board-stage {`,
+		`margin-inline: auto;`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("board centering styling missing %q", want)
+		}
+	}
+	for _, old := range []string{
 		`.board-wrap.board-wrap-cover-locked .board-stage {`,
-		`visibility: hidden;`,
 		`.board-cover-layer {`,
-		`.board-cover-layer.is-dissolving {`,
-		`animation: board-cover-dissolve 5s ease forwards;`,
 		`.board-cover-panel {`,
-		`aspect-ratio: 3 / 2;`,
 		`.board-cover-image {`,
 		`.board-cover-panel.is-loaded .board-cover-image {`,
 		`@keyframes board-cover-dissolve {`,
 	} {
-		if !strings.Contains(css, want) {
-			t.Fatalf("board cover styling missing %q", want)
+		if strings.Contains(css, old) {
+			t.Fatalf("board cover styling should be removed; found %q", old)
 		}
-	}
-	if _, err := FS.ReadFile("dist/picture01.png"); err != nil {
-		t.Fatalf("ReadFile(dist/picture01.png) error = %v", err)
 	}
 }
 
@@ -563,8 +564,18 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"/song.mp3",
 		`cultureImageLoaded: false,`,
 		`function warmCultureImage()`,
+		`const startedAt = performance.now();`,
 		`const img = new Image();`,
+		`state.cultureImageLoader = img;`,
+		`const timeoutId = setTimeout(() => {`,
+		`img.src = "";`,
+		`诗图加载超时`,
 		`img.decoding = "async";`,
+		`clearTimeout(timeoutId);`,
+		`state.cultureImageLoader = null;`,
+		`state.cultureImageRequested = false;`,
+		`诗图加载完成`,
+		`诗图加载失败，重试中`,
 		`img.src = "/picture02.png";`,
 		`<div class="poem-window ${state.cultureImageLoaded ? "is-loaded" : "is-loading"}">`,
 		`<div class="poem-window-art" aria-hidden="true"></div>`,

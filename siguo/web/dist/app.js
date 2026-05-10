@@ -64,12 +64,7 @@ const state = {
   joinOffer: null,
   cultureImageLoaded: false,
   cultureImageRequested: false,
-  boardCoverImageLoaded: false,
-  boardCoverImageRequested: false,
-  boardCoverVisible: true,
-  boardCoverDissolving: false,
-  boardCoverSawLobby: false,
-  boardCoverTimer: null,
+  cultureImageLoader: null,
   connectionStatus: "idle",
   connectionMessage: "",
   reconnectAttempts: 0,
@@ -78,8 +73,14 @@ const state = {
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
+const imageWarmTimeoutMs = 30000;
 
 const app = document.querySelector("#app");
+
+function formatLoadDuration(ms) {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.round(ms)}ms`;
+}
 
 function render() {
   app.innerHTML = `
@@ -101,7 +102,7 @@ function render() {
         ${watchRoomPanelHTML()}
         ${joinOfferHTML()}
         ${requestBannerHTML()}
-        <div class="board-wrap ${boardCoverLocksBoard() ? "board-wrap-cover-locked" : ""}">${boardCoverHTML()}${victoryHTML()}${boardHTML()}</div>
+        <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
       <aside class="side">
         <div class="panel stack">
@@ -229,84 +230,6 @@ function victoryActionsHTML() {
   </div>`;
 }
 
-function boardCoverHTML() {
-  if (!state.boardCoverVisible) return "";
-  warmBoardCoverImage();
-  return `<div class="board-cover-layer ${state.boardCoverDissolving ? "is-dissolving" : ""}" aria-hidden="true">
-    <div class="board-cover-panel ${state.boardCoverImageLoaded ? "is-loaded" : "is-loading"}"><img class="board-cover-image" src="/picture01.png" alt="" /></div>
-  </div>`;
-}
-
-function warmBoardCoverImage() {
-  if (state.boardCoverImageLoaded || state.boardCoverImageRequested) return;
-  state.boardCoverImageRequested = true;
-  const img = new Image();
-  img.decoding = "async";
-  img.onload = () => {
-    state.boardCoverImageLoaded = true;
-    render();
-  };
-  img.onerror = () => {
-    state.boardCoverImageRequested = false;
-  };
-  img.src = "/picture01.png";
-}
-
-function boardCoverLocksBoard() {
-  return state.boardCoverVisible && !state.boardCoverDissolving;
-}
-
-function clearBoardCoverTimer() {
-  if (!state.boardCoverTimer) return;
-  clearTimeout(state.boardCoverTimer);
-  state.boardCoverTimer = null;
-}
-
-function resetBoardCover(show = true) {
-  clearBoardCoverTimer();
-  state.boardCoverVisible = show;
-  state.boardCoverDissolving = false;
-  state.boardCoverSawLobby = false;
-}
-
-function startBoardCoverReveal() {
-  if (!state.boardCoverVisible || state.boardCoverDissolving) return;
-  clearBoardCoverTimer();
-  state.boardCoverDissolving = true;
-  state.boardCoverTimer = setTimeout(() => {
-    state.boardCoverVisible = false;
-    state.boardCoverDissolving = false;
-    state.boardCoverTimer = null;
-    render();
-  }, 5000);
-}
-
-function updateBoardCover(nextRoom) {
-  if (!nextRoom) {
-    resetBoardCover(true);
-    return;
-  }
-  const phase = nextRoom.phase;
-  const previousPhase = state.room?.phase;
-  if (phase === "lobby") {
-    clearBoardCoverTimer();
-    state.boardCoverVisible = true;
-    state.boardCoverDissolving = false;
-    state.boardCoverSawLobby = true;
-    return;
-  }
-  if (phase === "setup" || phase === "playing") {
-    if (previousPhase === "lobby" || (state.boardCoverSawLobby && state.boardCoverVisible)) {
-      startBoardCoverReveal();
-      return;
-    }
-    if (!state.boardCoverSawLobby) {
-      state.boardCoverVisible = false;
-      state.boardCoverDissolving = false;
-    }
-  }
-}
-
 function setupCultureHTML() {
   if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
   warmCultureImage();
@@ -334,14 +257,31 @@ function setupCultureHTML() {
 function warmCultureImage() {
   if (state.cultureImageLoaded || state.cultureImageRequested) return;
   state.cultureImageRequested = true;
+  const startedAt = performance.now();
   const img = new Image();
+  state.cultureImageLoader = img;
+  const timeoutId = setTimeout(() => {
+    if (state.cultureImageLoader !== img) return;
+    state.cultureImageLoader = null;
+    state.cultureImageRequested = false;
+    img.src = "";
+    log(`诗图加载超时（${formatLoadDuration(imageWarmTimeoutMs)}），重试中`);
+  }, imageWarmTimeoutMs);
   img.decoding = "async";
   img.onload = () => {
+    if (state.cultureImageLoader !== img) return;
+    clearTimeout(timeoutId);
+    state.cultureImageLoader = null;
+    state.cultureImageRequested = false;
     state.cultureImageLoaded = true;
-    render();
+    log(`诗图加载完成（${formatLoadDuration(performance.now() - startedAt)}）`);
   };
   img.onerror = () => {
+    if (state.cultureImageLoader !== img) return;
+    clearTimeout(timeoutId);
+    state.cultureImageLoader = null;
     state.cultureImageRequested = false;
+    log("诗图加载失败，重试中");
   };
   img.src = "/picture02.png";
 }
@@ -1152,7 +1092,6 @@ function setMode(mode) {
 
 function leaveEndedRoom(shouldRender = true) {
   clearReconnectTimer();
-  resetBoardCover(true);
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
@@ -1214,8 +1153,6 @@ async function acceptJoin(res, opts = {}) {
   state.viewer = false;
   state.watchOpen = false;
   state.joinOffer = null;
-  resetBoardCover(true);
-  state.boardCoverSawLobby = true;
   state.selectedMarker = null;
   state.pieceMarks = {};
   localStorage.setItem("siguo.code", state.code);
@@ -1262,7 +1199,6 @@ async function connectViewer(code) {
   state.viewer = true;
   state.watchOpen = false;
   state.joinOffer = null;
-  resetBoardCover(true);
   state.code = code;
   state.token = "";
   state.host = false;
@@ -1325,10 +1261,13 @@ function clearReconnectTimer() {
 function scheduleReconnect(viewer) {
   if (!state.code || (!viewer && !state.token)) return;
   const delay = reconnectDelaysMs[Math.min(state.reconnectAttempts, reconnectDelaysMs.length - 1)];
+  const shouldLogDisconnect = state.connectionStatus !== "reconnecting";
   state.reconnectAttempts += 1;
   state.connectionStatus = "reconnecting";
   state.connectionMessage = state.reconnectAttempts > 6 ? "连接断开，请确认房间还在" : `连接断开，${Math.ceil(delay / 1000)}秒后重连`;
-  log(viewer ? "观战已断开，正在重连" : "连接已断开，正在重连");
+  if (shouldLogDisconnect) {
+    log(viewer ? "观战已断开，正在重连" : "连接已断开，正在重连");
+  }
   state.reconnectTimer = setTimeout(() => openSocket(viewer, true), delay);
 }
 
@@ -1363,7 +1302,6 @@ async function viewerRoomStatus(code) {
 function onMessage(msg) {
   if (msg.type === "heartbeat") return;
   if (msg.type === "room.state") {
-    updateBoardCover(msg.room);
     state.room = msg.room;
     if (!state.viewer && typeof msg.room?.selfSeat === "number") {
       state.seat = msg.room.selfSeat;
