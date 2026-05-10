@@ -15,7 +15,7 @@ run:
 
 web:
 	mkdir -p web/dist internal/static/dist
-	cp assets/map3.jpg assets/map8.jpg web/dist/
+	cp assets/map3.jpg assets/map8.jpg assets/picture01.png web/dist/
 	cp web/dist/* internal/static/dist/
 	@echo "web/dist is dependency-free and mirrored into internal/static/dist"
 

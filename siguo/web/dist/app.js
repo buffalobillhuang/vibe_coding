@@ -62,6 +62,10 @@ const state = {
   watchOpen: false,
   watchRooms: [],
   joinOffer: null,
+  boardCoverVisible: true,
+  boardCoverDissolving: false,
+  boardCoverSawLobby: false,
+  boardCoverTimer: null,
   connectionStatus: "idle",
   connectionMessage: "",
   reconnectAttempts: 0,
@@ -93,7 +97,7 @@ function render() {
         ${watchRoomPanelHTML()}
         ${joinOfferHTML()}
         ${requestBannerHTML()}
-        <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
+        <div class="board-wrap ${boardCoverLocksBoard() ? "board-wrap-cover-locked" : ""}">${boardCoverHTML()}${victoryHTML()}${boardHTML()}</div>
       </section>
       <aside class="side">
         <div class="panel stack">
@@ -219,6 +223,68 @@ function victoryActionsHTML() {
     <button id="restartRoomBtn" class="primary">再开一局</button>
     <button id="leaveRoomBtn">返回大厅</button>
   </div>`;
+}
+
+function boardCoverHTML() {
+  if (!state.boardCoverVisible) return "";
+  return `<div class="board-cover-layer ${state.boardCoverDissolving ? "is-dissolving" : ""}" aria-hidden="true">
+    <div class="board-cover-panel"><img class="board-cover-image" src="/picture01.png" alt="" /></div>
+  </div>`;
+}
+
+function boardCoverLocksBoard() {
+  return state.boardCoverVisible && !state.boardCoverDissolving;
+}
+
+function clearBoardCoverTimer() {
+  if (!state.boardCoverTimer) return;
+  clearTimeout(state.boardCoverTimer);
+  state.boardCoverTimer = null;
+}
+
+function resetBoardCover(show = true) {
+  clearBoardCoverTimer();
+  state.boardCoverVisible = show;
+  state.boardCoverDissolving = false;
+  state.boardCoverSawLobby = false;
+}
+
+function startBoardCoverReveal() {
+  if (!state.boardCoverVisible || state.boardCoverDissolving) return;
+  clearBoardCoverTimer();
+  state.boardCoverDissolving = true;
+  state.boardCoverTimer = setTimeout(() => {
+    state.boardCoverVisible = false;
+    state.boardCoverDissolving = false;
+    state.boardCoverTimer = null;
+    render();
+  }, 5000);
+}
+
+function updateBoardCover(nextRoom) {
+  if (!nextRoom) {
+    resetBoardCover(true);
+    return;
+  }
+  const phase = nextRoom.phase;
+  const previousPhase = state.room?.phase;
+  if (phase === "lobby") {
+    clearBoardCoverTimer();
+    state.boardCoverVisible = true;
+    state.boardCoverDissolving = false;
+    state.boardCoverSawLobby = true;
+    return;
+  }
+  if (phase === "setup" || phase === "playing") {
+    if (previousPhase === "lobby" || (state.boardCoverSawLobby && state.boardCoverVisible)) {
+      startBoardCoverReveal();
+      return;
+    }
+    if (!state.boardCoverSawLobby) {
+      state.boardCoverVisible = false;
+      state.boardCoverDissolving = false;
+    }
+  }
 }
 
 function setupCultureHTML() {
@@ -1049,6 +1115,7 @@ function setMode(mode) {
 
 function leaveEndedRoom(shouldRender = true) {
   clearReconnectTimer();
+  resetBoardCover(true);
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
@@ -1110,6 +1177,8 @@ async function acceptJoin(res, opts = {}) {
   state.viewer = false;
   state.watchOpen = false;
   state.joinOffer = null;
+  resetBoardCover(true);
+  state.boardCoverSawLobby = true;
   state.selectedMarker = null;
   state.pieceMarks = {};
   localStorage.setItem("siguo.code", state.code);
@@ -1156,6 +1225,7 @@ async function connectViewer(code) {
   state.viewer = true;
   state.watchOpen = false;
   state.joinOffer = null;
+  resetBoardCover(true);
   state.code = code;
   state.token = "";
   state.host = false;
@@ -1256,6 +1326,7 @@ async function viewerRoomStatus(code) {
 function onMessage(msg) {
   if (msg.type === "heartbeat") return;
   if (msg.type === "room.state") {
+    updateBoardCover(msg.room);
     state.room = msg.room;
     if (!state.viewer && typeof msg.room?.selfSeat === "number") {
       state.seat = msg.room.selfSeat;

@@ -235,6 +235,58 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 	}
 }
 
+func TestBoardCoverUsesPictureAndRevealsOnGameStart(t *testing.T) {
+	jsData, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(jsData)
+	for _, want := range []string{
+		`boardCoverVisible: true,`,
+		`<div class="board-wrap ${boardCoverLocksBoard() ? "board-wrap-cover-locked" : ""}">${boardCoverHTML()}${victoryHTML()}${boardHTML()}</div>`,
+		`function boardCoverHTML()`,
+		`function boardCoverLocksBoard()`,
+		`return state.boardCoverVisible && !state.boardCoverDissolving;`,
+		`src="/picture01.png"`,
+		`function resetBoardCover(show = true)`,
+		`state.boardCoverSawLobby = true;`,
+		`function startBoardCoverReveal()`,
+		`}, 5000);`,
+		`function updateBoardCover(nextRoom)`,
+		`if (phase === "lobby") {`,
+		`if (phase === "setup" || phase === "playing") {`,
+		`updateBoardCover(msg.room);`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("board cover launch behavior missing %q", want)
+		}
+	}
+
+	cssData, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(cssData)
+	for _, want := range []string{
+		`.board-wrap.board-wrap-cover-locked .board-stage {`,
+		`visibility: hidden;`,
+		`.board-cover-layer {`,
+		`.board-cover-layer.is-dissolving {`,
+		`animation: board-cover-dissolve 5s ease forwards;`,
+		`.board-cover-panel {`,
+		`aspect-ratio: 3 / 2;`,
+		`.board-cover-image {`,
+		`@keyframes board-cover-dissolve {`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("board cover styling missing %q", want)
+		}
+	}
+	if _, err := FS.ReadFile("dist/picture01.png"); err != nil {
+		t.Fatalf("ReadFile(dist/picture01.png) error = %v", err)
+	}
+}
+
 func TestTurnFrontUsesDotOverlayInBothModes(t *testing.T) {
 	jsData, err := FS.ReadFile("dist/app.js")
 	if err != nil {
