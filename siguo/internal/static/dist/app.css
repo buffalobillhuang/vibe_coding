@@ -849,6 +849,22 @@ input {
   animation-name: board-chat-fly;
   animation-timing-function: linear;
   animation-fill-mode: both;
+  font-family: "Songti SC", "Noto Serif SC", Georgia, serif;
+}
+
+.board-chat-item.public {
+  background: rgba(74, 26, 24, .74);
+  border-color: rgba(255, 237, 187, .55);
+  color: #fff2cd;
+}
+
+.board-chat-item.team {
+  background: rgba(24, 52, 41, .8);
+  border-color: rgba(161, 230, 198, .5);
+  color: #dcfff0;
+  font-family: "STKaiti", "Kaiti SC", "KaiTi", serif;
+  letter-spacing: .08em;
+  box-shadow: 0 10px 22px rgba(0,0,0,.28), inset 0 0 0 1px rgba(214,255,235,.08), 0 0 18px rgba(62, 177, 129, .2);
 }
 
 .board-chat-item.viewer {
@@ -1290,6 +1306,26 @@ input {
   color: var(--muted);
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.chat-line-public {
+  border-left: 3px solid rgba(232, 157, 112, .55);
+  color: #f1d7af;
+  font-family: "Songti SC", "Noto Serif SC", Georgia, serif;
+}
+
+.chat-line-team {
+  border-left: 3px solid rgba(118, 222, 171, .62);
+  background: rgba(19, 46, 38, .34);
+  color: #d9ffef;
+  font-family: "STKaiti", "Kaiti SC", "KaiTi", serif;
+  letter-spacing: .05em;
+}
+
+.chat-line-viewer {
+  border-left: 3px solid rgba(149, 202, 255, .54);
+  color: #d8eeff;
+  font-family: "Trebuchet MS", "Avenir Next", sans-serif;
 }
 
 .error {

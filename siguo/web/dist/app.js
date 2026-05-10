@@ -128,7 +128,7 @@ function render() {
           ${state.room ? `<div class="row">
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
-            ${state.viewer || currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
+            ${state.viewer || currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍（仅队友可见）</button>`}
           </div>
           ${quickChatHTML()}` : ""}
         </div>
@@ -549,7 +549,8 @@ function boardChatOverlayHTML() {
   const items = state.boardChats.map(chat => {
     const elapsed = Date.now() - chat.createdAt;
     const top = `${chat.top.toFixed(1)}%`;
-    const cls = chat.system ? "board-chat-item system" : chat.viewer ? "board-chat-item viewer" : "board-chat-item";
+    const channelClass = chat.channel === "team" ? "team" : "public";
+    const cls = chat.system ? `board-chat-item ${channelClass} system` : chat.viewer ? `board-chat-item ${channelClass} viewer` : `board-chat-item ${channelClass}`;
     return `<div class="${cls}" style="top:${top};animation-duration:${chat.durationMs}ms;animation-delay:-${Math.max(0, elapsed)}ms">${esc(chat.text)}</div>`;
   }).join("");
   return `<div class="board-chat-layer" aria-hidden="true">${items}</div>`;
@@ -1676,7 +1677,7 @@ function isSystemChat(chat) {
 }
 
 function enqueueBoardChat(chat) {
-  if (!chat || chat.channel !== "all") return;
+  if (!chat || (chat.channel !== "all" && chat.channel !== "team")) return;
   const text = boardChatText(chat);
   if (!text) return;
   pruneBoardChats();
@@ -1684,6 +1685,7 @@ function enqueueBoardChat(chat) {
   state.boardChatLane += 1;
   state.boardChats.push({
     text,
+    channel: chat.channel,
     viewer: !!chat.viewer,
     system: isSystemChat(chat),
     top: 10 + lane * 15,
@@ -1698,6 +1700,11 @@ function boardChatText(chat) {
   const body = chatBody(chat);
   if (!body) return "";
   if (isSystemChat(chat)) return body;
+  if (chat.channel === "team") {
+    const prefix = seatNames[Number(chat.from)] || "队友";
+    const name = chat.name ? ` ${chat.name}` : "";
+    return `${prefix}${name}：${body}（仅队友可见）`.trim();
+  }
   if (chat.viewer) return `观战 ${chat.name || "观众"}：${body}`;
   const prefix = seatNames[Number(chat.from)] || "";
   const name = chat.name ? ` ${chat.name}` : "";
@@ -1716,9 +1723,12 @@ function chatLine(c) {
     return `<div class="line">[${label}] ${esc(body)}</div>`;
   }
   if (c.viewer) {
-    return `<div class="line">[${label}] 观战 ${esc(c.name || "观众")}：${esc(body)}</div>`;
+    return `<div class="line chat-line chat-line-viewer">[${label}] 观战 ${esc(c.name || "观众")}：${esc(body)}</div>`;
   }
-  return `<div class="line">[${label}] ${seatNames[Number(c.from)] || ""} ${esc(c.name)}：${esc(body)}</div>`;
+  if (c.channel === "team") {
+    return `<div class="line chat-line chat-line-team">[队伍（仅队友可见）] ${seatNames[Number(c.from)] || ""} ${esc(c.name)}：${esc(body)}</div>`;
+  }
+  return `<div class="line chat-line chat-line-public">[公屏] ${seatNames[Number(c.from)] || ""} ${esc(c.name)}：${esc(body)}</div>`;
 }
 
 function log(line) {

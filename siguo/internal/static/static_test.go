@@ -530,9 +530,17 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"function viewerRoomStatus(code)",
 		"boardChatOverlayHTML()",
 		"enqueueBoardChat(msg.chat)",
+		"chat.channel !== \"all\" && chat.channel !== \"team\"",
+		"队伍（仅队友可见）",
+		"body}（仅队友可见）",
+		"chat-line-team",
+		"chat-line-public",
+		"chat.channel === \"team\" ? \"team\" : \"public\"",
+		"board-chat-item ${channelClass}",
 		"function sendSocketMessage(msg, viewerRequest = false)",
 		"观战 ${esc(c.name || \"观众\")}",
-		"chat.viewer ? \"board-chat-item viewer\" : \"board-chat-item\"",
+		"board-chat-item ${channelClass} viewer",
+		"board-chat-item ${channelClass} system",
 		"[系统]",
 		"请输入昵称后再观战",
 		"当前玩家不能同时观战自己的对局",
@@ -609,7 +617,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", `.poem-window-art`, `.poem-window.is-loaded .poem-window-art`, `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", ".board-chat-item.team", ".board-chat-item.public", ".chat-line-team", ".chat-line-public", `.poem-window-art`, `.poem-window.is-loaded .poem-window-art`, `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}
