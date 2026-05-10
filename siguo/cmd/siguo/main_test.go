@@ -12,6 +12,34 @@ import (
 	"siguo/internal/room"
 )
 
+func TestStaticHandlerSetsCacheControlByAssetType(t *testing.T) {
+	h := staticHandler()
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{path: "/", want: "no-cache"},
+		{path: "/app.js", want: "no-cache"},
+		{path: "/app.css", want: "no-cache"},
+		{path: "/song.mp3", want: "public, max-age=3600"},
+		{path: "/setup-music.ogg", want: "public, max-age=3600"},
+		{path: "/picture01.png", want: "public, max-age=3600"},
+		{path: "/picture02.png", want: "public, max-age=3600"},
+		{path: "/map3.jpg", want: "public, max-age=3600"},
+		{path: "/map8.jpg", want: "public, max-age=3600"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("Cache-Control"); got != tc.want {
+			t.Fatalf("%s cache-control = %q, want %q", tc.path, got, tc.want)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want %d", tc.path, rec.Code, http.StatusOK)
+		}
+	}
+}
+
 func TestCreateRoomStillAllowsLobbyWhenActiveRoomsAreFull(t *testing.T) {
 	h := hub.New(1)
 	active, err := h.Create()

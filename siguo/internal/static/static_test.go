@@ -243,11 +243,16 @@ func TestBoardCoverUsesPictureAndRevealsOnGameStart(t *testing.T) {
 	js := string(jsData)
 	for _, want := range []string{
 		`boardCoverVisible: true,`,
+		`boardCoverImageLoaded: false,`,
 		`<div class="board-wrap ${boardCoverLocksBoard() ? "board-wrap-cover-locked" : ""}">${boardCoverHTML()}${victoryHTML()}${boardHTML()}</div>`,
 		`function boardCoverHTML()`,
+		`function warmBoardCoverImage()`,
+		`const img = new Image();`,
+		`img.decoding = "async";`,
 		`function boardCoverLocksBoard()`,
 		`return state.boardCoverVisible && !state.boardCoverDissolving;`,
 		`src="/picture01.png"`,
+		`board-cover-panel ${state.boardCoverImageLoaded ? "is-loaded" : "is-loading"}`,
 		`function resetBoardCover(show = true)`,
 		`state.boardCoverSawLobby = true;`,
 		`function startBoardCoverReveal()`,
@@ -276,6 +281,7 @@ func TestBoardCoverUsesPictureAndRevealsOnGameStart(t *testing.T) {
 		`.board-cover-panel {`,
 		`aspect-ratio: 3 / 2;`,
 		`.board-cover-image {`,
+		`.board-cover-panel.is-loaded .board-cover-image {`,
 		`@keyframes board-cover-dissolve {`,
 	} {
 		if !strings.Contains(css, want) {
@@ -555,6 +561,18 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"明·杨慎",
 		"滚滚长江东逝水",
 		"/song.mp3",
+		`cultureImageLoaded: false,`,
+		`function warmCultureImage()`,
+		`const img = new Image();`,
+		`img.decoding = "async";`,
+		`img.src = "/picture02.png";`,
+		`<div class="poem-window ${state.cultureImageLoaded ? "is-loaded" : "is-loading"}">`,
+		`<div class="poem-window-art" aria-hidden="true"></div>`,
+		`audio.preload = "auto";`,
+		`function warmSetupMusic()`,
+		`if (audio.networkState === HTMLMediaElement.NETWORK_EMPTY) {`,
+		`audio.load();`,
+		`warmSetupMusic();`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing %q", want)
@@ -566,7 +584,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", `.poem-window-art`, `.poem-window.is-loaded .poem-window-art`, `url("/picture02.png")`, "@keyframes poem-cross"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}

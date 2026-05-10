@@ -62,6 +62,10 @@ const state = {
   watchOpen: false,
   watchRooms: [],
   joinOffer: null,
+  cultureImageLoaded: false,
+  cultureImageRequested: false,
+  boardCoverImageLoaded: false,
+  boardCoverImageRequested: false,
   boardCoverVisible: true,
   boardCoverDissolving: false,
   boardCoverSawLobby: false,
@@ -227,9 +231,25 @@ function victoryActionsHTML() {
 
 function boardCoverHTML() {
   if (!state.boardCoverVisible) return "";
+  warmBoardCoverImage();
   return `<div class="board-cover-layer ${state.boardCoverDissolving ? "is-dissolving" : ""}" aria-hidden="true">
-    <div class="board-cover-panel"><img class="board-cover-image" src="/picture01.png" alt="" /></div>
+    <div class="board-cover-panel ${state.boardCoverImageLoaded ? "is-loaded" : "is-loading"}"><img class="board-cover-image" src="/picture01.png" alt="" /></div>
   </div>`;
+}
+
+function warmBoardCoverImage() {
+  if (state.boardCoverImageLoaded || state.boardCoverImageRequested) return;
+  state.boardCoverImageRequested = true;
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    state.boardCoverImageLoaded = true;
+    render();
+  };
+  img.onerror = () => {
+    state.boardCoverImageRequested = false;
+  };
+  img.src = "/picture01.png";
 }
 
 function boardCoverLocksBoard() {
@@ -289,6 +309,7 @@ function updateBoardCover(nextRoom) {
 
 function setupCultureHTML() {
   if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
+  warmCultureImage();
   const musicText = state.setupMusicEnabled ? "静音" : state.setupMusicBlocked ? "再试" : "启乐";
   const modeLine = currentMode() === "junqi" ? "一枰对坐，风云入局" : "四方列阵，战局正酣";
   const poemColumns = [
@@ -301,12 +322,28 @@ function setupCultureHTML() {
       <div><b>临江仙</b><span>杨慎 · ${modeLine}</span></div>
       <button id="setupMusicBtn" class="music-chip">${musicText}</button>
     </div>
-    <div class="poem-window">
+    <div class="poem-window ${state.cultureImageLoaded ? "is-loaded" : "is-loading"}">
+      <div class="poem-window-art" aria-hidden="true"></div>
       <div class="poem-scroll">
         ${poemColumns}${poemColumns}
       </div>
     </div>
   </div>`;
+}
+
+function warmCultureImage() {
+  if (state.cultureImageLoaded || state.cultureImageRequested) return;
+  state.cultureImageRequested = true;
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    state.cultureImageLoaded = true;
+    render();
+  };
+  img.onerror = () => {
+    state.cultureImageRequested = false;
+  };
+  img.src = "/picture02.png";
 }
 
 function quickChatHTML() {
@@ -1519,6 +1556,7 @@ function shouldPlaySetupMusic() {
 function ensureSetupMusic() {
   if (state.setupMusic) return state.setupMusic;
   const audio = new Audio("/song.mp3");
+  audio.preload = "auto";
   audio.loop = true;
   audio.volume = 0.32;
   audio.addEventListener("error", () => {
@@ -1530,6 +1568,14 @@ function ensureSetupMusic() {
   });
   state.setupMusic = audio;
   return audio;
+}
+
+function warmSetupMusic() {
+  if (!state.setupMusicEnabled) return;
+  const audio = ensureSetupMusic();
+  if (audio.networkState === HTMLMediaElement.NETWORK_EMPTY) {
+    audio.load();
+  }
 }
 
 function syncSetupMusic() {
@@ -1568,6 +1614,7 @@ function toggleSound() {
 }
 
 function ensureAudio() {
+  warmSetupMusic();
   if (!state.sound || state.audio) return;
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return;

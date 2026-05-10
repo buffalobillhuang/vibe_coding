@@ -175,6 +175,7 @@ func staticHandler() http.Handler {
 	}
 	fileServer := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", staticCacheControl(r.URL.Path))
 		if r.URL.Path != "/" {
 			if f, err := sub.Open(strings.TrimPrefix(r.URL.Path, "/")); err == nil {
 				_ = f.Close()
@@ -185,6 +186,17 @@ func staticHandler() http.Handler {
 		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+func staticCacheControl(path string) string {
+	switch {
+	case path == "/", strings.HasSuffix(path, ".html"), strings.HasSuffix(path, ".js"), strings.HasSuffix(path, ".css"):
+		return "no-cache"
+	case strings.HasSuffix(path, ".mp3"), strings.HasSuffix(path, ".ogg"), strings.HasSuffix(path, ".png"), strings.HasSuffix(path, ".jpg"):
+		return "public, max-age=3600"
+	default:
+		return "no-cache"
+	}
 }
 
 func logMiddleware(logger *slog.Logger, next http.Handler) http.Handler {

@@ -236,6 +236,33 @@ func TestViewForOnlyIncludesViewerDeadPieces(t *testing.T) {
 	}
 }
 
+func TestViewForSpectatorIncludesAllDeadPieces(t *testing.T) {
+	g := testState(t,
+		[]Piece{
+			{ID: 1, Owner: North, Rank: Commander, Alive: true},
+			{ID: 2, Owner: East, Rank: Engineer, Alive: true},
+		},
+		map[PieceID]Pos{
+			1: {1, 8},
+			2: {2, 8},
+		},
+		North,
+	)
+
+	next, _, err := ApplyMove(g, Move{PieceID: 1, From: Pos{1, 8}, To: Pos{2, 8}})
+	if err != nil {
+		t.Fatalf("ApplyMove() error = %v", err)
+	}
+	view := next.ViewForSpectator()
+	if len(view.DeadPieces) != 1 {
+		t.Fatalf("spectator dead pieces = %v, want one", view.DeadPieces)
+	}
+	dead := view.DeadPieces[0]
+	if dead.Owner != East || dead.Rank != Engineer {
+		t.Fatalf("spectator dead piece = %+v, want east engineer", dead)
+	}
+}
+
 func rankAt(view ClientView, pos Pos) Rank {
 	for _, cell := range view.Cells {
 		if cell.Pos == pos && cell.Piece != nil {

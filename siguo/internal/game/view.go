@@ -47,14 +47,18 @@ func (g *GameState) viewFor(viewer Seat, spectator bool) ClientView {
 		view.Eliminated[seat] = eliminated
 	}
 	for _, piece := range g.Pieces {
-		if !spectator && piece.Owner == viewer && !piece.Alive {
-			view.DeadPieces = append(view.DeadPieces, ClientPiece{
-				ID:    piece.ID,
-				Owner: piece.Owner,
-				Rank:  piece.Rank,
-				Alive: false,
-			})
+		if piece.Alive {
+			continue
 		}
+		if !spectator && piece.Owner != viewer {
+			continue
+		}
+		view.DeadPieces = append(view.DeadPieces, ClientPiece{
+			ID:    piece.ID,
+			Owner: piece.Owner,
+			Rank:  piece.Rank,
+			Alive: false,
+		})
 	}
 
 	for row := 0; row < BoardSize; row++ {
