@@ -486,7 +486,7 @@ input {
 
 .board-stage-junqi {
   max-width: 900px;
-  padding-right: clamp(170px, 25vw, 280px);
+  padding-inline: clamp(170px, 25vw, 280px);
 }
 
 .board-surface-wrap-junqi {
