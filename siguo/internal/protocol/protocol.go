@@ -121,6 +121,7 @@ type ServerMessage struct {
 type ChatMessage struct {
 	From    game.Seat `json:"from"`
 	Name    string    `json:"name"`
+	Viewer  bool      `json:"viewer,omitempty"`
 	Channel string    `json:"channel"`
 	Text    string    `json:"text,omitempty"`
 	Emote   string    `json:"emote,omitempty"`

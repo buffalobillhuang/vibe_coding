@@ -57,6 +57,7 @@ type Room struct {
 	seats         map[game.Seat]*Player
 	connections   map[string]chan []byte
 	viewers       map[string]chan []byte
+	viewerNames   map[string]string
 	pieces        map[game.PieceID]game.Piece
 	placements    map[game.PieceID]game.Pos
 	state         *game.GameState
@@ -86,6 +87,7 @@ func New(code string) *Room {
 		seats:         map[game.Seat]*Player{},
 		connections:   map[string]chan []byte{},
 		viewers:       map[string]chan []byte{},
+		viewerNames:   map[string]string{},
 		pieces:        map[game.PieceID]game.Piece{},
 		placements:    map[game.PieceID]game.Pos{},
 		nextPieceID:   1,
@@ -175,7 +177,13 @@ func (r *Room) Active() bool {
 func (r *Room) ActiveSummary() (protocol.ActiveRoomInfo, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.phase != PhaseSetup && r.phase != PhasePlaying {
+	occupied := 0
+	for _, seat := range game.ActiveSeats(r.mode) {
+		if r.seats[seat] != nil {
+			occupied++
+		}
+	}
+	if (r.phase != PhaseSetup && r.phase != PhasePlaying) && (r.phase != PhaseLobby || occupied < 2) {
 		return protocol.ActiveRoomInfo{}, false
 	}
 	info := protocol.ActiveRoomInfo{
@@ -222,7 +230,7 @@ func (r *Room) Connect(token string) (chan []byte, *Player, error) {
 func (r *Room) ConnectViewer(name string) (chan []byte, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.phase != PhaseSetup && r.phase != PhasePlaying {
+	if r.phase != PhaseLobby && r.phase != PhaseSetup && r.phase != PhasePlaying {
 		return nil, "", errors.New("game is not active")
 	}
 	name = cleanName(name)
@@ -238,6 +246,7 @@ func (r *Room) ConnectViewer(name string) (chan []byte, string, error) {
 	id := newToken()
 	ch := make(chan []byte, 32)
 	r.viewers[id] = ch
+	r.viewerNames[id] = name
 	r.sendViewerLocked(id, protocol.ServerMessage{Type: "room.state", Room: r.spectatorSnapshotLocked()})
 	r.sendViewerLocked(id, protocol.ServerMessage{Type: "view", View: r.spectatorViewLocked()})
 	r.broadcastRoomLocked()
@@ -265,7 +274,29 @@ func (r *Room) DisconnectViewer(id string) {
 		close(ch)
 		delete(r.viewers, id)
 	}
+	delete(r.viewerNames, id)
 	r.broadcastRoomLocked()
+}
+
+func (r *Room) ViewerName(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.viewerNames[id]
+}
+
+func (r *Room) BroadcastViewerNotice(name, action string) {
+	name = cleanName(name)
+	if name == "" || strings.TrimSpace(action) == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	chat := &protocol.ChatMessage{
+		Channel: ChannelAll,
+		Text:    fmt.Sprintf("[系统] %s%s", name, action),
+		TS:      time.Now().UnixMilli(),
+	}
+	r.broadcastLocked(protocol.ServerMessage{Type: "chat.msg", Chat: chat})
 }
 
 func (r *Room) Handle(token string, raw []byte) {
@@ -322,6 +353,29 @@ func (r *Room) Handle(token string, raw []byte) {
 		r.handleChatLocked(player, msg)
 	default:
 		r.sendErrorLocked(token, "unknown_type", "未知消息类型", msg.Seq)
+	}
+}
+
+func (r *Room) HandleViewer(id string, raw []byte) {
+	var msg protocol.ClientMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.sendViewerErrorLocked(id, "bad_json", "消息格式错误", 0)
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.viewers[id] == nil {
+		return
+	}
+	switch msg.Type {
+	case "chat.send":
+		r.handleViewerChatLocked(id, msg)
+	default:
+		r.sendViewerErrorLocked(id, "viewer_readonly", "观战只支持公屏聊天", msg.Seq)
 	}
 }
 
@@ -1015,6 +1069,42 @@ func (r *Room) handleChatLocked(player *Player, msg protocol.ClientMessage) {
 	r.broadcastLocked(protocol.ServerMessage{Type: "chat.msg", Chat: chat})
 }
 
+func (r *Room) handleViewerChatLocked(id string, msg protocol.ClientMessage) {
+	channel := msg.Channel
+	if channel == "" {
+		channel = ChannelAll
+	}
+	if channel != ChannelAll {
+		r.sendViewerErrorLocked(id, "viewer_all_chat_only", "观战只支持公屏聊天", msg.Seq)
+		return
+	}
+	text := strings.TrimSpace(msg.Text)
+	if len([]rune(text)) > 200 {
+		r.sendViewerErrorLocked(id, "chat_too_long", "聊天最多 200 字", msg.Seq)
+		return
+	}
+	if text == "" && msg.Emote == "" {
+		return
+	}
+	if !r.allowChatLocked("viewer:" + id) {
+		r.sendViewerErrorLocked(id, "rate_limited", "发言太快了", msg.Seq)
+		return
+	}
+	chat := &protocol.ChatMessage{
+		Name:    r.viewerNames[id],
+		Viewer:  true,
+		Channel: ChannelAll,
+		Text:    text,
+		Emote:   msg.Emote,
+		TS:      time.Now().UnixMilli(),
+	}
+	if chat.Name == "" {
+		r.sendViewerErrorLocked(id, "unauthorized", "观战会话已失效", msg.Seq)
+		return
+	}
+	r.broadcastLocked(protocol.ServerMessage{Type: "chat.msg", Chat: chat})
+}
+
 func (r *Room) createArmyLocked(seat game.Seat) []game.PieceID {
 	var ids []game.PieceID
 	for rank, count := range game.StandardArmy {
@@ -1299,6 +1389,13 @@ func (r *Room) sendSeatLocked(seat game.Seat, msg protocol.ServerMessage) {
 
 func (r *Room) sendErrorLocked(token, code, message string, refSeq int64) {
 	r.sendLocked(token, protocol.ServerMessage{
+		Type:  "error",
+		Error: &protocol.ErrorMessage{Code: code, Message: message, RefSeq: refSeq},
+	})
+}
+
+func (r *Room) sendViewerErrorLocked(id, code, message string, refSeq int64) {
+	r.sendViewerLocked(id, protocol.ServerMessage{
 		Type:  "error",
 		Error: &protocol.ErrorMessage{Code: code, Message: message, RefSeq: refSeq},
 	})

@@ -88,6 +88,35 @@ func TestListActiveRooms(t *testing.T) {
 	}
 }
 
+func TestListPopulatedLobbyRoomsForWatching(t *testing.T) {
+	h := hub.New(25)
+	lobby, err := h.Create()
+	if err != nil {
+		t.Fatalf("Create() lobby room error = %v", err)
+	}
+	if _, err := lobby.Join("north", ""); err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	if _, err := lobby.Join("south", ""); err != nil {
+		t.Fatalf("Join(south) error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/rooms", nil)
+	rec := httptest.NewRecorder()
+	handleRooms(h).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var response protocol.ActiveRoomsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal(active rooms) error = %v", err)
+	}
+	if len(response.Rooms) != 1 || response.Rooms[0].Code != lobby.Code || response.Rooms[0].Phase != room.PhaseLobby {
+		t.Fatalf("active rooms = %+v, want populated lobby %s", response.Rooms, lobby.Code)
+	}
+}
+
 func startHTTPTestRoom(t *testing.T, r *room.Room) {
 	t.Helper()
 	host, err := r.Join("north", "")

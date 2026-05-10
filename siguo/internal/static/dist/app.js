@@ -55,6 +55,9 @@ const state = {
   lastTrail: null,
   selectedMarker: null,
   pieceMarks: {},
+  boardChats: [],
+  boardChatLane: 0,
+  boardChatTimer: null,
   log: [],
   chat: [],
   lowTimeWarned: false,
@@ -122,12 +125,12 @@ function render() {
         <div class="panel stack">
           <b>聊天</b>
           <div class="chat-log">${state.chat.slice(-80).reverse().map(chatLine).join("")}</div>
-          ${state.viewer ? "" : `<div class="row">
+          ${state.room ? `<div class="row">
             <input id="chatText" maxlength="200" placeholder="输入消息" />
             <button id="sendAll">公屏</button>
-            ${currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
+            ${state.viewer || currentMode() === "junqi" ? "" : `<button id="sendTeam">队伍</button>`}
           </div>
-          ${quickChatHTML()}`}
+          ${quickChatHTML()}` : ""}
         </div>
         <div class="panel stack">
           <b>战况</b>
@@ -293,7 +296,7 @@ function quickChatHTML() {
 }
 
 function viewerLinkButtonHTML() {
-  if (!state.room || !["setup", "playing"].includes(state.room.phase)) return "";
+  if (!state.room || !["lobby", "setup", "playing"].includes(state.room.phase)) return "";
   return `<button id="viewerLinkBtn">观战链接</button>`;
 }
 
@@ -319,7 +322,7 @@ function watchRoomPanelHTML() {
   const rows = rooms.length ? rooms.map(room => {
     const names = (room.seats || []).map(s => s.name || seatNames[s.seat]).join(" · ");
     return `<div class="watch-row">
-      <div><b>${esc(room.code)}</b><span>${modeNames[room.mode] || room.mode} · ${room.phase === "setup" ? "布阵" : "对局"} · ${room.viewers}/${room.maxViewers} 观战</span><small>${esc(names)}</small></div>
+      <div><b>${esc(room.code)}</b><span>${modeNames[room.mode] || room.mode} · ${watchPhaseLabel(room.phase)} · ${room.viewers}/${room.maxViewers} 观战</span><small>${esc(names)}</small></div>
       <button class="watch-join" data-code="${esc(room.code)}" ${room.canJoinView ? "" : "disabled"}>观看</button>
       <button class="watch-copy" data-code="${esc(room.code)}">复制链接</button>
     </div>`;
@@ -328,6 +331,12 @@ function watchRoomPanelHTML() {
     <div class="watch-head"><b>观战室</b><div><button id="watchRefreshBtn">刷新</button><button id="watchCloseBtn">关闭</button></div></div>
     <div class="watch-list">${rows}</div>
   </div>`;
+}
+
+function watchPhaseLabel(phase) {
+  if (phase === "lobby") return "大厅";
+  if (phase === "setup") return "布阵";
+  return "对局";
 }
 
 function seatsHTML() {
@@ -379,8 +388,8 @@ function boardHTML() {
   const cols = mode === "junqi" ? 5 : 17;
   const stageClass = mode === "junqi" ? "board-stage board-stage-junqi" : "board-stage";
   const boardOpen = mode === "junqi"
-    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}`
-    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}`;
+    ? `<div class="board-surface-wrap board-surface-wrap-junqi">${playerTickersHTML()}<div class="board-clip board-clip-junqi"><div class="board board-${mode} board-junqi-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}${boardChatOverlayHTML()}`
+    : `<div class="board board-${mode} board-siguo-rel-${state.seat}">${railOverlayHTML()}${turnFrontOverlayHTML()}${moveTrailOverlayHTML()}${playerTickersHTML()}${boardChatOverlayHTML()}`;
   const boardClose = mode === "junqi" ? `</div></div></div>` : `</div>`;
   let html = `<div class="${stageClass}">${boardOpen}`;
   for (let displayRow = 0; displayRow < rows; displayRow++) {
@@ -533,6 +542,17 @@ function moveTrailOverlayHTML() {
     <polyline points="${polyline}" />
     ${dots}
   </svg>`;
+}
+
+function boardChatOverlayHTML() {
+  pruneBoardChats();
+  const items = state.boardChats.map(chat => {
+    const elapsed = Date.now() - chat.createdAt;
+    const top = `${chat.top.toFixed(1)}%`;
+    const cls = chat.system ? "board-chat-item system" : chat.viewer ? "board-chat-item viewer" : "board-chat-item";
+    return `<div class="${cls}" style="top:${top};animation-duration:${chat.durationMs}ms;animation-delay:-${Math.max(0, elapsed)}ms">${esc(chat.text)}</div>`;
+  }).join("");
+  return `<div class="board-chat-layer" aria-hidden="true">${items}</div>`;
 }
 
 function turnFrontOverlayHTML() {
@@ -1333,6 +1353,7 @@ function onMessage(msg) {
     clearInactiveMoveTrail();
   } else if (msg.type === "chat.msg") {
     state.chat.push(msg.chat);
+    enqueueBoardChat(msg.chat);
   } else if (msg.type === "error") {
     log(`错误：${msg.error?.message || msg.notice}`);
   } else if (msg.event) {
@@ -1423,6 +1444,17 @@ function clickCell(cell) {
   state.selected = null;
 }
 
+function sendSocketMessage(msg, viewerRequest = false) {
+  if (!connectionReady()) {
+    log(connectionBlockedText());
+    if (!state.reconnectTimer) scheduleReconnect(viewerRequest);
+    return false;
+  }
+  msg.seq = state.seq++;
+  state.ws.send(JSON.stringify(msg));
+  return true;
+}
+
 function send(msg) {
   ensureAudio();
   if (state.viewer) {
@@ -1439,9 +1471,10 @@ function send(msg) {
 }
 
 function sendChat(channel) {
-  if (state.viewer) return;
   const input = document.querySelector("#chatText");
-  send({type:"chat.send", channel, text: input.value});
+  if (!input) return;
+  const effectiveChannel = state.viewer ? "all" : channel;
+  sendSocketMessage({type:"chat.send", channel: effectiveChannel, text: input.value}, state.viewer);
   input.value = "";
 }
 
@@ -1609,13 +1642,83 @@ function playFlag() {
   tone(440, 0.26, 0.28, "triangle", 0.06);
 }
 
+function pruneBoardChats() {
+  const now = Date.now();
+  state.boardChats = state.boardChats.filter(chat => now - chat.createdAt < chat.durationMs);
+}
+
+function scheduleBoardChatCleanup() {
+  if (state.boardChatTimer) {
+    clearTimeout(state.boardChatTimer);
+    state.boardChatTimer = null;
+  }
+  if (!state.boardChats.length) return;
+  const now = Date.now();
+  let nextExpiry = Infinity;
+  state.boardChats.forEach(chat => {
+    nextExpiry = Math.min(nextExpiry, chat.createdAt + chat.durationMs - now);
+  });
+  state.boardChatTimer = setTimeout(() => {
+    state.boardChatTimer = null;
+    const before = state.boardChats.length;
+    pruneBoardChats();
+    if (state.boardChats.length !== before) render();
+    scheduleBoardChatCleanup();
+  }, Math.max(40, nextExpiry));
+}
+
+function chatBody(chat) {
+  return String(chat.text || chat.emote || "").trim();
+}
+
+function isSystemChat(chat) {
+  return chatBody(chat).startsWith("[系统]");
+}
+
+function enqueueBoardChat(chat) {
+  if (!chat || chat.channel !== "all") return;
+  const text = boardChatText(chat);
+  if (!text) return;
+  pruneBoardChats();
+  const lane = state.boardChatLane % 5;
+  state.boardChatLane += 1;
+  state.boardChats.push({
+    text,
+    viewer: !!chat.viewer,
+    system: isSystemChat(chat),
+    top: 10 + lane * 15,
+    createdAt: Date.now(),
+    durationMs: Math.min(12000, 6400 + text.length * 90)
+  });
+  if (state.boardChats.length > 12) state.boardChats = state.boardChats.slice(-12);
+  scheduleBoardChatCleanup();
+}
+
+function boardChatText(chat) {
+  const body = chatBody(chat);
+  if (!body) return "";
+  if (isSystemChat(chat)) return body;
+  if (chat.viewer) return `观战 ${chat.name || "观众"}：${body}`;
+  const prefix = seatNames[Number(chat.from)] || "";
+  const name = chat.name ? ` ${chat.name}` : "";
+  return `${prefix}${name}：${body}`.trim();
+}
+
 function coord(p) {
   if (!p) return "";
   return `${p.Row ?? p.row},${p.Col ?? p.col}`;
 }
 
 function chatLine(c) {
-  return `<div class="line">[${c.channel === "team" ? "队伍" : "公屏"}] ${seatNames[c.from]} ${esc(c.name)}：${esc(c.text || c.emote || "")}</div>`;
+  const label = c.channel === "team" ? "队伍" : "公屏";
+  const body = chatBody(c);
+  if (isSystemChat(c)) {
+    return `<div class="line">[${label}] ${esc(body)}</div>`;
+  }
+  if (c.viewer) {
+    return `<div class="line">[${label}] 观战 ${esc(c.name || "观众")}：${esc(body)}</div>`;
+  }
+  return `<div class="line">[${label}] ${seatNames[Number(c.from)] || ""} ${esc(c.name)}：${esc(body)}</div>`;
 }
 
 function log(line) {

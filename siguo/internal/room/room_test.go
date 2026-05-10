@@ -92,6 +92,88 @@ func TestConnectViewerRejectsPlayerName(t *testing.T) {
 	}
 }
 
+func TestConnectViewerAllowsLobbyWithTwoPlayers(t *testing.T) {
+	r := New("ABC123")
+	if _, err := r.Join("north", ""); err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	if _, err := r.Join("south", ""); err != nil {
+		t.Fatalf("Join(south) error = %v", err)
+	}
+	out, id, err := r.ConnectViewer("observer")
+	if err != nil {
+		t.Fatalf("ConnectViewer(observer) error = %v", err)
+	}
+	if out == nil || id == "" {
+		t.Fatalf("ConnectViewer(observer) = %v, %q, want channel and id", out, id)
+	}
+}
+
+func TestViewerCanSendPublicChat(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	northOut, _, err := r.Connect(north.Token)
+	if err != nil {
+		t.Fatalf("Connect(north) error = %v", err)
+	}
+	drainMessages(northOut)
+
+	viewerOut, viewerID, err := r.ConnectViewer("observer")
+	if err != nil {
+		t.Fatalf("ConnectViewer(observer) error = %v", err)
+	}
+	drainMessages(viewerOut)
+	drainMessages(northOut)
+
+	sendViewerTestMessage(t, r, viewerID, protocol.ClientMessage{Type: "chat.send", Seq: 1, Channel: ChannelAll, Text: "hello board"})
+
+	msg := nextServerMessage(t, northOut)
+	if msg.Type != "chat.msg" || msg.Chat == nil {
+		t.Fatalf("message = %+v, want chat.msg", msg)
+	}
+	if !msg.Chat.Viewer || msg.Chat.Name != "observer" || msg.Chat.Text != "hello board" {
+		t.Fatalf("viewer chat = %+v, want public viewer chat", msg.Chat)
+	}
+	viewerEcho := nextServerMessage(t, viewerOut)
+	if viewerEcho.Type != "chat.msg" || viewerEcho.Chat == nil || viewerEcho.Chat.Text != "hello board" {
+		t.Fatalf("viewer echo = %+v, want echoed public chat", viewerEcho)
+	}
+
+	sendViewerTestMessage(t, r, viewerID, protocol.ClientMessage{Type: "chat.send", Seq: 2, Channel: ChannelTeam, Text: "nope"})
+	msg = nextServerMessage(t, viewerOut)
+	if msg.Type != "error" || msg.Error == nil || msg.Error.Code != "viewer_all_chat_only" {
+		t.Fatalf("viewer team chat response = %+v, want viewer_all_chat_only error", msg)
+	}
+}
+
+func TestBroadcastViewerNoticeUsesChatStream(t *testing.T) {
+	r := newPlayingRoom(t)
+	north := r.seats[game.North]
+	northOut, _, err := r.Connect(north.Token)
+	if err != nil {
+		t.Fatalf("Connect(north) error = %v", err)
+	}
+	drainMessages(northOut)
+
+	_, viewerID, err := r.ConnectViewer("observer")
+	if err != nil {
+		t.Fatalf("ConnectViewer(observer) error = %v", err)
+	}
+	drainMessages(northOut)
+
+	r.BroadcastViewerNotice(r.ViewerName(viewerID), "加入观战")
+	joined := nextServerMessage(t, northOut)
+	if joined.Type != "chat.msg" || joined.Chat == nil || !strings.Contains(joined.Chat.Text, "observer加入观战") {
+		t.Fatalf("joined notice = %+v, want observer join chat notice", joined)
+	}
+
+	r.BroadcastViewerNotice(r.ViewerName(viewerID), "离开观战")
+	left := nextServerMessage(t, northOut)
+	if left.Type != "chat.msg" || left.Chat == nil || !strings.Contains(left.Chat.Text, "observer离开观战") {
+		t.Fatalf("left notice = %+v, want observer leave chat notice", left)
+	}
+}
+
 func TestStartReportsFriendlyMessageWhenActiveRoomsAreFull(t *testing.T) {
 	r := New("ABC123")
 	r.SetActiveHooks(func() bool { return false }, nil)
@@ -502,6 +584,29 @@ func TestTeamWinsWhenBothRivalsEliminated(t *testing.T) {
 	}
 }
 
+func TestActiveSummaryIncludesPopulatedLobbyForWatching(t *testing.T) {
+	r := New("ABC123")
+	if _, ok := r.ActiveSummary(); ok {
+		t.Fatal("empty lobby should not appear in watch-room summary")
+	}
+	if _, err := r.Join("north", ""); err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	if _, ok := r.ActiveSummary(); ok {
+		t.Fatal("single-seat lobby should not appear in watch-room summary")
+	}
+	if _, err := r.Join("east", ""); err != nil {
+		t.Fatalf("Join(east) error = %v", err)
+	}
+	info, ok := r.ActiveSummary()
+	if !ok {
+		t.Fatal("populated lobby should appear in watch-room summary")
+	}
+	if info.Phase != PhaseLobby {
+		t.Fatalf("summary phase = %s, want lobby", info.Phase)
+	}
+}
+
 func TestJunqiRoomStartsWithTwoPlayers(t *testing.T) {
 	r := New("DUEL01")
 	r.ConfigureInitial(game.ModeJunqi, nil, nil)
@@ -696,6 +801,30 @@ func sendTestMessage(t *testing.T, r *Room, token string, msg protocol.ClientMes
 		t.Fatalf("Marshal() error = %v", err)
 	}
 	r.Handle(token, data)
+}
+
+func sendViewerTestMessage(t *testing.T, r *Room, viewerID string, msg protocol.ClientMessage) {
+	t.Helper()
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	r.HandleViewer(viewerID, data)
+}
+
+func nextServerMessage(t *testing.T, ch <-chan []byte) protocol.ServerMessage {
+	t.Helper()
+	select {
+	case data := <-ch:
+		var msg protocol.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			t.Fatalf("Unmarshal(server message) error = %v", err)
+		}
+		return msg
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for server message")
+		return protocol.ServerMessage{}
+	}
 }
 
 func drainMessages(ch <-chan []byte) {

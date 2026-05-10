@@ -80,7 +80,14 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	if isViewer {
-		defer room.DisconnectViewer(viewerID)
+		viewerName = room.ViewerName(viewerID)
+		room.BroadcastViewerNotice(viewerName, "加入观战")
+	}
+	if isViewer {
+		defer func() {
+			room.BroadcastViewerNotice(viewerName, "离开观战")
+			room.DisconnectViewer(viewerID)
+		}()
 	} else {
 		defer room.Disconnect(token, out)
 	}
@@ -134,7 +141,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		refreshReadDeadline()
 		switch op {
 		case opText:
-			if !isViewer {
+			if isViewer {
+				room.HandleViewer(viewerID, payload)
+			} else {
 				room.Handle(token, payload)
 			}
 		case opPing:
