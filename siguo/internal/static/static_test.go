@@ -249,6 +249,10 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 		`function roomGoneOfferHTML()`,
 		`async function rejoinAfterGone()`,
 		`function dismissRoomGone()`,
+		`async function restorePreviousSession()`,
+		`function forgetSavedSession()`,
+		`} else if (state.code && state.token) {
+  restorePreviousSession();`,
 		`state.roomGoneOffer = {code: state.code, isViewer: state.viewer, lastError: ""};`,
 		`if (state.roomGoneOffer) return;`,
 		`id="roomGoneRejoin"`,

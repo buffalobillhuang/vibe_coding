@@ -1938,5 +1938,39 @@ if (initialWatchCode) {
 } else if (initialJoinCode) {
   joinFromInvite(initialJoinCode);
 } else if (state.code && state.token) {
+  restorePreviousSession();
+}
+
+async function restorePreviousSession() {
+  try {
+    const res = await fetch(`/api/rooms/${encodeURIComponent(state.code)}?token=${encodeURIComponent(state.token)}`);
+    if (res.status === 404 || res.status === 401) {
+      forgetSavedSession();
+      return;
+    }
+  } catch {
+    // Network probe failed — fall through and try WS anyway; the regular
+    // reconnect machinery will handle real outages.
+  }
   connect();
+}
+
+function forgetSavedSession() {
+  state.code = "";
+  state.token = "";
+  state.host = false;
+  state.seat = 0;
+  state.room = null;
+  state.view = null;
+  state.viewer = false;
+  state.selected = null;
+  state.selectedMarker = null;
+  state.pieceMarks = {};
+  state.combat = null;
+  state.connectionStatus = "idle";
+  state.connectionMessage = "";
+  state.reconnectAttempts = 0;
+  localStorage.removeItem("siguo.code");
+  localStorage.removeItem("siguo.token");
+  render();
 }
