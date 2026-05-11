@@ -673,3 +673,23 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/picture02.png) error = %v", err)
 	}
 }
+
+func TestJoinPathsOnlyReuseSessionTokensForSameRoom(t *testing.T) {
+	data, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(data)
+	for _, want := range []string{
+		`function sessionTokenForRoom(code) {`,
+		`const savedCode = String(localStorage.getItem("siguo.code") || "").toUpperCase();`,
+		`return state.token && savedCode === normalizedCode ? state.token : "";`,
+		`const sessionToken = sessionTokenForRoom(code);`,
+		`body: JSON.stringify({name: state.name, sessionToken})`,
+		`const sessionToken = sessionTokenForRoom(offer.code);`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("join and rejoin flows must only reuse a saved session token for the same room; missing %q", want)
+		}
+	}
+}

@@ -1194,16 +1194,26 @@ function leaveEndedRoom(shouldRender = true) {
 
 async function joinRoom() {
   state.name = document.querySelector("#name").value.trim();
-  state.code = document.querySelector("#code").value.toUpperCase();
-  const res = await fetch(`/api/rooms/${state.code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
+  const code = document.querySelector("#code").value.toUpperCase();
+  const sessionToken = sessionTokenForRoom(code);
+  state.code = code;
+  const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken})});
   await acceptJoin(res);
+}
+
+function sessionTokenForRoom(code) {
+  const normalizedCode = String(code || "").toUpperCase();
+  if (!normalizedCode || state.viewer) return "";
+  const savedCode = String(localStorage.getItem("siguo.code") || "").toUpperCase();
+  return state.token && savedCode === normalizedCode ? state.token : "";
 }
 
 async function joinFromInvite(code) {
   code = String(code || "").toUpperCase();
   if (!code) return;
+  const sessionToken = sessionTokenForRoom(code);
   state.code = code;
-  const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
+  const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken})});
   await acceptJoin(res, {inviteCode: code});
 }
 
@@ -1421,7 +1431,8 @@ async function rejoinAfterGone() {
       await connectViewer(offer.code);
       return;
     }
-    const res = await fetch(`/api/rooms/${encodeURIComponent(offer.code)}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
+    const sessionToken = sessionTokenForRoom(offer.code);
+    const res = await fetch(`/api/rooms/${encodeURIComponent(offer.code)}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken})});
     if (!res.ok) {
       const msg = await responseErrorText(res);
       offer.lastError = msg;
