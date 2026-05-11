@@ -84,8 +84,10 @@ func TestConnectViewerRejectsPlayerName(t *testing.T) {
 	if _, _, err := r.ConnectViewer(" north "); !errors.Is(err, ErrViewerNameConflict) {
 		t.Fatalf("ConnectViewer(player name) error = %v, want ErrViewerNameConflict", err)
 	}
-	if _, _, err := r.ConnectViewer("   "); !errors.Is(err, ErrViewerNameRequired) {
-		t.Fatalf("ConnectViewer(blank) error = %v, want ErrViewerNameRequired", err)
+	if _, id, err := r.ConnectViewer("   "); err != nil {
+		t.Fatalf("ConnectViewer(blank) error = %v, want nil", err)
+	} else if got := r.ViewerName(id); got != "观众1" {
+		t.Fatalf("ViewerName(blank) = %q, want 观众1", got)
 	}
 	if _, _, err := r.ConnectViewer("observer"); err != nil {
 		t.Fatalf("ConnectViewer(observer) error = %v", err)

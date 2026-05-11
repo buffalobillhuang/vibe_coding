@@ -235,7 +235,7 @@ func (r *Room) ConnectViewer(name string) (chan []byte, string, error) {
 	}
 	name = cleanName(name)
 	if name == "" {
-		return nil, "", ErrViewerNameRequired
+		name = r.defaultViewerNameLocked()
 	}
 	if r.viewerNameConflictsPlayerLocked(name) {
 		return nil, "", ErrViewerNameConflict
@@ -1513,6 +1513,22 @@ func (r *Room) defaultPlayerNameLocked() string {
 	}
 	for i := 1; ; i++ {
 		name := fmt.Sprintf("玩家%d", i)
+		if !used[name] {
+			return name
+		}
+	}
+}
+
+func (r *Room) defaultViewerNameLocked() string {
+	used := map[string]bool{}
+	for _, player := range r.players {
+		used[player.Name] = true
+	}
+	for _, name := range r.viewerNames {
+		used[name] = true
+	}
+	for i := 1; ; i++ {
+		name := fmt.Sprintf("观众%d", i)
 		if !used[name] {
 			return name
 		}

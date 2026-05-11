@@ -212,23 +212,49 @@ function junqiSeatColor(seat) {
   return Number(seat) === 0 ? "red" : "blue";
 }
 
-function winnerLabel() {
+function absoluteWinnerLabel() {
   const winners = winnerSeats();
   if (!winners.length) return "和棋";
   if (currentMode() === "junqi") return junqiSeatColor(winners[0]) === "red" ? "红方获胜" : "蓝方获胜";
   return sameTeam(winners[0], 0) ? "北南联军获胜" : "东西联军获胜";
 }
 
+function currentSideWon() {
+  const winners = winnerSeats();
+  if (!winners.length || state.viewer) return false;
+  return sameSide(winners[0], state.seat);
+}
+
+function winnerLabel() {
+  const winners = winnerSeats();
+  if (!winners.length) return "和棋";
+  if (state.viewer) return absoluteWinnerLabel();
+  return currentSideWon() ? "我方获胜" : "对方获胜";
+}
+
+function victoryKicker() {
+  if (state.viewer) return "军旗已定";
+  return currentSideWon() ? "凯歌高奏" : "胜负已分";
+}
+
 function victorySubline() {
-  if (currentMode() === "junqi") return "一局定鼎";
-  return "联军得胜";
+  if (state.viewer) {
+    if (currentMode() === "junqi") return "一局定鼎";
+    return "联军得胜";
+  }
+  if (currentMode() === "junqi") return currentSideWon() ? "我方夺旗得胜" : "对方夺旗得胜";
+  return currentSideWon() ? "我方联军得胜" : "对方联军得胜";
 }
 
 function victoryToneClass() {
   const winners = winnerSeats();
   if (!winners.length) return "victory-neutral";
-  if (currentMode() === "junqi") return `victory-${junqiSeatColor(winners[0])}`;
-  return sameTeam(winners[0], 0) ? "victory-ns" : "victory-ew";
+  if (state.viewer) {
+    if (currentMode() === "junqi") return `victory-${junqiSeatColor(winners[0])}`;
+    return sameTeam(winners[0], 0) ? "victory-ns" : "victory-ew";
+  }
+  if (currentMode() === "junqi") return `victory-${junqiSeatColor(state.seat)}`;
+  return sameTeam(state.seat, 0) ? "victory-ns" : "victory-ew";
 }
 
 function victoryHTML() {
@@ -243,9 +269,9 @@ function victoryHTML() {
       ${petals}
       <div class="beauty beauty-left"></div>
       <div class="beauty beauty-right"></div>
-      <span class="victory-kicker">军旗已定</span>
+      <span class="victory-kicker">${victoryKicker()}</span>
       <b>${winnerLabel()}</b>
-      <small>${victorySubline()} · 另一方获胜</small>
+      <small>${victorySubline()}</small>
       ${victoryActionsHTML()}
     </div>
   </div>`;
@@ -1294,14 +1320,43 @@ function beginViewerSession(code) {
 async function connectViewer(code) {
   code = String(code || "").toUpperCase();
   const nameInput = document.querySelector("#name");
-  state.name = (nameInput ? nameInput.value : state.name || "").trim();
-  localStorage.setItem("siguo.name", state.name);
   const status = await viewerRoomStatus(code);
   if (!status.ok) {
     log(status.message);
     return;
   }
+  let promptMessage = "请输入观战昵称";
+  let suggestedName = defaultViewerName(status.room, nameInput ? nameInput.value : state.name || "");
+  while (true) {
+    const input = window.prompt(promptMessage, suggestedName);
+    if (input === null) return;
+    const viewerName = input.trim();
+    if (!viewerName) {
+      promptMessage = "观战昵称不能为空，请重新输入";
+      continue;
+    }
+    const viewerStatus = await viewerRoomStatus(code, viewerName);
+    if (!viewerStatus.ok) {
+      if (viewerStatus.message === "当前昵称已在该对局中落座，不能同时观战") {
+        promptMessage = viewerStatus.message;
+        suggestedName = viewerName;
+        continue;
+      }
+      log(viewerStatus.message);
+      return;
+    }
+    state.name = viewerName;
+    if (nameInput) nameInput.value = viewerName;
+    localStorage.setItem("siguo.name", state.name);
+    break;
+  }
   beginViewerSession(code);
+}
+
+function defaultViewerName(room, preferredName) {
+  const viewerName = String(preferredName || "").trim();
+  if (viewerName) return viewerName;
+  return `观众${Math.max(1, Number(room?.viewers || 0) + 1)}`;
 }
 
 function openSocket(viewer, isReconnect = false) {
@@ -1493,11 +1548,8 @@ function checkSocketHealth() {
   state.ws.close();
 }
 
-async function viewerRoomStatus(code) {
-  const viewerName = (state.name || "").trim();
-  if (!viewerName) {
-    return {ok: false, message: "请输入昵称后再观战"};
-  }
+async function viewerRoomStatus(code, viewerName = "") {
+  viewerName = String(viewerName || "").trim();
   if (state.token && state.code === code && !state.viewer) {
     return {ok: false, message: "当前玩家不能同时观战自己的对局"};
   }
@@ -1506,11 +1558,11 @@ async function viewerRoomStatus(code) {
   const data = await res.json();
   const room = (data.rooms || []).find(r => String(r.code).toUpperCase() === code);
   if (!room) return {ok: false, message: "对局不在进行中"};
-  if ((room.seats || []).some(s => ((s.name || "").trim().toLowerCase() === viewerName.toLowerCase()))) {
-    return {ok: false, message: "当前昵称已在该对局中落座，不能同时观战"};
+  if (viewerName && (room.seats || []).some(s => ((s.name || "").trim().toLowerCase() === viewerName.toLowerCase()))) {
+    return {ok: false, message: "当前昵称已在该对局中落座，不能同时观战", room};
   }
-  if (!room.canJoinView) return {ok: false, message: "观战席已满，请稍后再试"};
-  return {ok: true};
+  if (!room.canJoinView) return {ok: false, message: "观战席已满，请稍后再试", room};
+  return {ok: true, room};
 }
 
 function onMessage(msg) {
