@@ -31,7 +31,7 @@ const quickChatPhrases = [
 const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
 const socketWatchdogIntervalMs = 1000;
-const socketHeartbeatTimeoutMs = 11000;
+const socketHeartbeatTimeoutMs = 15000;
 const socketStalenessMs = 6000;
 
 const state = {

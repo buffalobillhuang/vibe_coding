@@ -125,6 +125,45 @@ input {
   padding: 18px;
 }
 
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px;
+  }
+  body {
+    background-size: 24px 24px, 24px 24px, auto, auto;
+  }
+  .topbar {
+    flex-wrap: wrap;
+    min-height: 0;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .topbar .row {
+    flex-wrap: wrap;
+    max-width: 100% !important;
+    gap: 6px;
+  }
+  .topbar .row > * {
+    flex: 0 1 auto;
+  }
+  .brand {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .brand h1 {
+    font-size: 22px;
+  }
+  .panel {
+    padding: 10px;
+  }
+  button {
+    min-height: 34px;
+    padding: 0 10px;
+  }
+}
+
 .table {
   display: flex;
   flex-direction: column;
@@ -1741,6 +1780,9 @@ input {
   .board-stage {
     align-items: flex-start;
     margin-inline: 0;
+  }
+  .board-stage-junqi {
+    padding-inline: 0;
   }
   .board {
     width: min(96vw, 82vh);

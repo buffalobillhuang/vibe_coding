@@ -23,7 +23,7 @@ const (
 	opPing  = 9
 	opPong  = 10
 
-	pingInterval = 3 * time.Second
+	pingInterval = 10 * time.Second
 	pongWait     = 12 * time.Second
 	writeWait    = 10 * time.Second
 )
