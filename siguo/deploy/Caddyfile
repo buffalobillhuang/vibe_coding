@@ -1,3 +1,8 @@
 :80 {
+	log {
+		output stdout
+		format json
+		level INFO
+	}
 	reverse_proxy siguo:8080
 }

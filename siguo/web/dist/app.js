@@ -31,7 +31,8 @@ const quickChatPhrases = [
 const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
 const socketWatchdogIntervalMs = 5000;
-const socketHeartbeatTimeoutMs = 45000;
+const socketHeartbeatTimeoutMs = 25000;
+const socketStalenessMs = 12000;
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -159,7 +160,29 @@ function connectionStatusText() {
   if (state.connectionStatus === "connecting") return "连接中";
   if (state.connectionStatus === "reconnecting") return "重连中";
   if (state.connectionStatus === "offline") return "已断线";
+  if (socketLooksStale()) return "连接可能卡住";
   return "";
+}
+
+function socketLooksStale() {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+  if (!state.lastSocketMessageAt) return false;
+  return Date.now() - state.lastSocketMessageAt > socketStalenessMs;
+}
+
+function forceReconnect(viewer) {
+  clearReconnectTimer();
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.close();
+  }
+  state.ws = null;
+  state.lastSocketMessageAt = 0;
+  state.selected = null;
+  state.reconnectAttempts = 0;
+  state.connectionStatus = "reconnecting";
+  state.connectionMessage = "连接卡住，正在重连";
+  openSocket(viewer, true);
 }
 
 function setupCountdownText() {
@@ -1409,10 +1432,17 @@ function clickCell(cell) {
   const pieceId = pieceEl ? Number(pieceEl.dataset.piece) : 0;
   const owner = pieceEl ? Number(pieceEl.dataset.owner) : -1;
   if (!state.room) return;
-  if (["setup", "playing"].includes(state.room.phase) && !connectionReady()) {
-    log(connectionBlockedText());
-    if (!state.reconnectTimer) scheduleReconnect(state.viewer);
-    return;
+  if (["setup", "playing"].includes(state.room.phase)) {
+    if (socketLooksStale()) {
+      log("连接卡住，正在重连");
+      forceReconnect(state.viewer);
+      return;
+    }
+    if (!connectionReady()) {
+      log(connectionBlockedText());
+      if (!state.reconnectTimer) scheduleReconnect(state.viewer);
+      return;
+    }
   }
   if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;
   if (state.room.phase === "setup" && state.selected && pieceId && owner === state.seat) {
@@ -1446,6 +1476,11 @@ function clickCell(cell) {
 }
 
 function sendSocketMessage(msg, viewerRequest = false) {
+  if (socketLooksStale()) {
+    log("连接卡住，正在重连");
+    forceReconnect(viewerRequest);
+    return false;
+  }
   if (!connectionReady()) {
     log(connectionBlockedText());
     if (!state.reconnectTimer) scheduleReconnect(viewerRequest);
@@ -1460,6 +1495,11 @@ function send(msg) {
   ensureAudio();
   if (state.viewer) {
     log("观战中，不能操作对局");
+    return;
+  }
+  if (socketLooksStale()) {
+    log("连接卡住，正在重连");
+    forceReconnect(false);
     return;
   }
   if (!connectionReady()) {

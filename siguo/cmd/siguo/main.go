@@ -30,7 +30,7 @@ func main() {
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ready\n"))
 	})
-	mux.Handle("/ws", ws.Handler{Hub: h, AllowOrigin: cfg.AllowOrigin})
+	mux.Handle("/ws", ws.Handler{Hub: h, AllowOrigin: cfg.AllowOrigin, Logger: logger})
 	mux.HandleFunc("/api/rooms", handleRooms(h))
 	mux.HandleFunc("/api/rooms/", handleRoom(h))
 	mux.Handle("/", staticHandler())

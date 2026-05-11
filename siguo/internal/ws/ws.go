@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -32,14 +33,24 @@ var heartbeatPayload = []byte(`{"type":"heartbeat"}`)
 type Handler struct {
 	Hub         *hub.Hub
 	AllowOrigin string
+	Logger      *slog.Logger
+}
+
+func (h Handler) logger() *slog.Logger {
+	if h.Logger != nil {
+		return h.Logger
+	}
+	return slog.Default()
 }
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	logger := h.logger()
 	if h.Hub == nil {
 		http.Error(w, "hub not configured", http.StatusInternalServerError)
 		return
 	}
 	if !h.originAllowed(r) {
+		logger.Warn("ws.reject", "reason", "origin_forbidden", "origin", r.Header.Get("Origin"), "remote", r.RemoteAddr)
 		http.Error(w, "origin forbidden", http.StatusForbidden)
 		return
 	}
@@ -47,11 +58,16 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	room, ok := h.Hub.Get(code)
 	if !ok {
+		logger.Info("ws.reject", "reason", "room_not_found", "room", code, "remote", r.RemoteAddr)
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
 	isViewer := r.URL.Query().Get("viewer") == "1"
 	viewerName := r.URL.Query().Get("name")
+	role := "player"
+	if isViewer {
+		role = "viewer"
+	}
 	var out chan []byte
 	var viewerID string
 	var err error
@@ -59,18 +75,21 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		out, viewerID, err = room.ConnectViewer(viewerName)
 	} else {
 		if token == "" {
+			logger.Info("ws.reject", "reason", "missing_token", "room", code, "remote", r.RemoteAddr)
 			http.Error(w, "room not found", http.StatusNotFound)
 			return
 		}
 		out, _, err = room.Connect(token)
 	}
 	if err != nil {
+		logger.Warn("ws.reject", "reason", "connect_failed", "role", role, "room", code, "remote", r.RemoteAddr, "error", err.Error())
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	conn, rw, err := accept(w, r)
 	if err != nil {
+		logger.Warn("ws.reject", "reason", "handshake_failed", "role", role, "room", code, "remote", r.RemoteAddr, "error", err.Error())
 		if isViewer {
 			room.DisconnectViewer(viewerID)
 		} else {
@@ -83,13 +102,21 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		viewerName = room.ViewerName(viewerID)
 		room.BroadcastViewerNotice(viewerName, "加入观战")
 	}
+	connID := connIDOf(token, viewerID)
+	connStart := time.Now()
+	logger.Info("ws.open", "role", role, "room", code, "conn", connID, "remote", r.RemoteAddr)
+	closeReason := "client_close"
 	if isViewer {
 		defer func() {
+			logger.Info("ws.close", "role", role, "room", code, "conn", connID, "reason", closeReason, "age_ms", time.Since(connStart).Milliseconds())
 			room.BroadcastViewerNotice(viewerName, "离开观战")
 			room.DisconnectViewer(viewerID)
 		}()
 	} else {
-		defer room.Disconnect(token, out)
+		defer func() {
+			logger.Info("ws.close", "role", role, "room", code, "conn", connID, "reason", closeReason, "age_ms", time.Since(connStart).Milliseconds())
+			room.Disconnect(token, out)
+		}()
 	}
 	refreshReadDeadline := func() {
 		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -103,6 +130,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 		return writeFrame(rw, op, payload)
 	}
+	var writerReason string
 	refreshReadDeadline()
 	go func() {
 		defer close(done)
@@ -112,20 +140,27 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			select {
 			case msg, ok := <-out:
 				if !ok {
+					writerReason = "server_replaced"
 					_ = safeWrite(opClose, nil)
 					_ = conn.Close()
 					return
 				}
 				if err := safeWrite(opText, msg); err != nil {
+					writerReason = "write_err:" + err.Error()
+					logger.Info("ws.write_err", "role", role, "room", code, "conn", connID, "stage", "text", "error", err.Error(), "age_ms", time.Since(connStart).Milliseconds())
 					_ = conn.Close()
 					return
 				}
 			case <-ticker.C:
 				if err := safeWrite(opPing, []byte("ping")); err != nil {
+					writerReason = "ping_err:" + err.Error()
+					logger.Info("ws.write_err", "role", role, "room", code, "conn", connID, "stage", "ping", "error", err.Error(), "age_ms", time.Since(connStart).Milliseconds())
 					_ = conn.Close()
 					return
 				}
 				if err := safeWrite(opText, heartbeatPayload); err != nil {
+					writerReason = "heartbeat_err:" + err.Error()
+					logger.Info("ws.write_err", "role", role, "room", code, "conn", connID, "stage", "heartbeat", "error", err.Error(), "age_ms", time.Since(connStart).Milliseconds())
 					_ = conn.Close()
 					return
 				}
@@ -136,6 +171,12 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		op, payload, err := readFrame(rw)
 		if err != nil {
+			if writerReason != "" {
+				closeReason = writerReason
+			} else {
+				closeReason = "read_err:" + err.Error()
+				logger.Info("ws.read_err", "role", role, "room", code, "conn", connID, "error", err.Error(), "age_ms", time.Since(connStart).Milliseconds())
+			}
 			return
 		}
 		refreshReadDeadline()
@@ -149,14 +190,29 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case opPing:
 			_ = safeWrite(opPong, payload)
 		case opClose:
+			closeReason = "client_close"
 			return
 		}
 		select {
 		case <-done:
+			if writerReason != "" {
+				closeReason = writerReason
+			}
 			return
 		default:
 		}
 	}
+}
+
+func connIDOf(token, viewerID string) string {
+	src := token
+	if src == "" {
+		src = viewerID
+	}
+	if len(src) > 8 {
+		return src[:8]
+	}
+	return src
 }
 
 func (h Handler) originAllowed(r *http.Request) bool {
