@@ -30,9 +30,9 @@ const quickChatPhrases = [
 ];
 const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
-const socketWatchdogIntervalMs = 5000;
-const socketHeartbeatTimeoutMs = 25000;
-const socketStalenessMs = 12000;
+const socketWatchdogIntervalMs = 1000;
+const socketHeartbeatTimeoutMs = 11000;
+const socketStalenessMs = 6000;
 
 const state = {
   name: localStorage.getItem("siguo.name") || "",
@@ -66,6 +66,7 @@ const state = {
   watchOpen: false,
   watchRooms: [],
   joinOffer: null,
+  roomGoneOffer: null,
   cultureImageLoaded: false,
   cultureImageRequested: false,
   cultureImageLoader: null,
@@ -100,11 +101,13 @@ function render() {
             <button id="randBtn" ${!state.viewer && state.room?.phase === "setup" ? "" : "disabled"}>随机</button>
             <button id="submitBtn" ${!state.viewer && state.room?.phase === "setup" ? "" : "disabled"}>提交</button>
             ${actionButtonsHTML()}
+            ${reconnectButtonHTML()}
             <button id="soundBtn" class="toggle ${state.sound ? "on" : "off"}">声音</button>
           </div>
         </div>
         ${watchRoomPanelHTML()}
         ${joinOfferHTML()}
+        ${roomGoneOfferHTML()}
         ${requestBannerHTML()}
         <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
@@ -171,6 +174,7 @@ function socketLooksStale() {
 }
 
 function forceReconnect(viewer) {
+  if (state.roomGoneOffer) return;
   clearReconnectTimer();
   if (state.ws) {
     state.ws.onclose = null;
@@ -328,6 +332,12 @@ function inviteLinkButtonHTML() {
   return `<button id="inviteLinkBtn">邀请链接</button>`;
 }
 
+function reconnectButtonHTML() {
+  if (!state.code) return "";
+  const urgent = socketLooksStale() || state.connectionStatus === "reconnecting" || state.connectionStatus === "offline" || (state.ws && state.ws.readyState !== WebSocket.OPEN);
+  return `<button id="reconnectBtn" class="${urgent ? "urgent" : ""}" title="立即重连">重连</button>`;
+}
+
 function joinOfferHTML() {
   const offer = state.joinOffer;
   if (!offer) return "";
@@ -336,6 +346,16 @@ function joinOfferHTML() {
   return `<div class="panel join-offer">
     <div><b>无法加入 ${esc(offer.code)}</b><span>${esc(offer.message)} ${viewerText}</span></div>
     <div><button id="joinOfferClose">关闭</button>${viewerAction}</div>
+  </div>`;
+}
+
+function roomGoneOfferHTML() {
+  const offer = state.roomGoneOffer;
+  if (!offer) return "";
+  const note = offer.lastError ? `<span class="subtle">${esc(offer.lastError)}</span>` : "";
+  return `<div class="panel room-gone-offer">
+    <div><b>对局 ${esc(offer.code)} 已结束或不存在</b><span>可以尝试重新进入；如果对局已结束，请返回大厅。</span>${note}</div>
+    <div><button id="roomGoneLeave">返回大厅</button><button id="roomGoneRejoin" class="primary">重新进入</button></div>
   </div>`;
 }
 
@@ -961,6 +981,10 @@ function bind() {
   if (joinOfferView) joinOfferView.onclick = () => connectViewer(state.joinOffer?.code);
   const joinOfferClose = document.querySelector("#joinOfferClose");
   if (joinOfferClose) joinOfferClose.onclick = () => { state.joinOffer = null; render(); };
+  const roomGoneRejoin = document.querySelector("#roomGoneRejoin");
+  if (roomGoneRejoin) roomGoneRejoin.onclick = rejoinAfterGone;
+  const roomGoneLeave = document.querySelector("#roomGoneLeave");
+  if (roomGoneLeave) roomGoneLeave.onclick = dismissRoomGone;
   const watchRefreshBtn = document.querySelector("#watchRefreshBtn");
   if (watchRefreshBtn) watchRefreshBtn.onclick = refreshWatchRooms;
   const watchCloseBtn = document.querySelector("#watchCloseBtn");
@@ -971,6 +995,11 @@ function bind() {
   document.querySelector("#randBtn").onclick = () => send({type:"setup.randomize"});
   document.querySelector("#submitBtn").onclick = () => send({type:"setup.submit"});
   document.querySelector("#soundBtn").onclick = toggleSound;
+  const reconnectBtn = document.querySelector("#reconnectBtn");
+  if (reconnectBtn) reconnectBtn.onclick = () => {
+    log("手动重连");
+    forceReconnect(state.viewer);
+  };
   const setupMusicBtn = document.querySelector("#setupMusicBtn");
   if (setupMusicBtn) setupMusicBtn.onclick = () => {
     state.setupMusicEnabled = !state.setupMusicEnabled;
@@ -1308,6 +1337,7 @@ function clearReconnectTimer() {
 }
 
 function scheduleReconnect(viewer) {
+  if (state.roomGoneOffer) return;
   if (!state.code || (!viewer && !state.token)) return;
   const delay = reconnectDelaysMs[Math.min(state.reconnectAttempts, reconnectDelaysMs.length - 1)];
   const shouldLogDisconnect = state.connectionStatus !== "reconnecting";
@@ -1317,7 +1347,105 @@ function scheduleReconnect(viewer) {
   if (shouldLogDisconnect) {
     log(viewer ? "观战已断开，正在重连" : "连接已断开，正在重连");
   }
-  state.reconnectTimer = setTimeout(() => openSocket(viewer, true), delay);
+  state.reconnectTimer = setTimeout(() => attemptReconnect(viewer), delay);
+}
+
+async function attemptReconnect(viewer) {
+  state.reconnectTimer = null;
+  if (state.reconnectAttempts >= 3) {
+    const alive = await probeRoomAlive();
+    if (!alive) {
+      handleRoomGone();
+      return;
+    }
+  }
+  openSocket(viewer, true);
+}
+
+async function probeRoomAlive() {
+  if (!state.code) return true;
+  try {
+    if (state.viewer) {
+      const res = await fetch("/api/rooms");
+      if (!res.ok) return true;
+      const data = await res.json();
+      return (data.rooms || []).some(r => String(r.code).toUpperCase() === String(state.code).toUpperCase());
+    }
+    if (!state.token) return true;
+    const res = await fetch(`/api/rooms/${encodeURIComponent(state.code)}?token=${encodeURIComponent(state.token)}`);
+    if (res.status === 404 || res.status === 401) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function handleRoomGone() {
+  if (state.roomGoneOffer) return;
+  clearReconnectTimer();
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.close();
+  }
+  state.ws = null;
+  state.lastSocketMessageAt = 0;
+  state.reconnectAttempts = 0;
+  state.selected = null;
+  state.connectionStatus = "offline";
+  state.connectionMessage = "对局已结束或不存在";
+  state.roomGoneOffer = {code: state.code, isViewer: state.viewer, lastError: ""};
+  log("对局已结束或不存在");
+  render();
+}
+
+async function rejoinAfterGone() {
+  const offer = state.roomGoneOffer;
+  if (!offer) return;
+  state.roomGoneOffer = null;
+  state.connectionStatus = "connecting";
+  state.connectionMessage = "正在重新进入";
+  log("尝试重新进入对局");
+  render();
+  try {
+    if (offer.isViewer) {
+      const status = await viewerRoomStatus(offer.code);
+      if (!status.ok) {
+        offer.lastError = status.message;
+        state.roomGoneOffer = offer;
+        state.connectionStatus = "offline";
+        state.connectionMessage = "对局已结束或不存在";
+        log(`无法重新进入：${status.message}`);
+        render();
+        return;
+      }
+      await connectViewer(offer.code);
+      return;
+    }
+    const res = await fetch(`/api/rooms/${encodeURIComponent(offer.code)}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken: state.token})});
+    if (!res.ok) {
+      const msg = await responseErrorText(res);
+      offer.lastError = msg;
+      state.roomGoneOffer = offer;
+      state.connectionStatus = "offline";
+      state.connectionMessage = "对局已结束或不存在";
+      log(`无法重新进入：${msg}`);
+      render();
+      return;
+    }
+    await acceptJoin(res);
+  } catch (e) {
+    offer.lastError = String(e);
+    state.roomGoneOffer = offer;
+    state.connectionStatus = "offline";
+    state.connectionMessage = "对局已结束或不存在";
+    log(`无法重新进入：${e}`);
+    render();
+  }
+}
+
+function dismissRoomGone() {
+  state.roomGoneOffer = null;
+  leaveEndedRoom(true);
 }
 
 function connectionReady() {
@@ -1422,6 +1550,10 @@ function handleMarkerClick(pieceId, owner) {
 
 function clickCell(cell) {
   ensureAudio();
+  if (state.roomGoneOffer) {
+    log("请先选择重新进入或返回大厅");
+    return;
+  }
   if (state.viewer) {
     log("观战中，不能操作棋子");
     return;
@@ -1785,6 +1917,7 @@ setInterval(tickTimer, 200);
 setInterval(checkSocketHealth, socketWatchdogIntervalMs);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
+  if (state.roomGoneOffer) return;
   if (!state.code) return;
   if (!state.viewer && !state.token) return;
   if (socketLooksStale() || (state.ws && state.ws.readyState !== WebSocket.OPEN)) {

@@ -100,6 +100,36 @@ func TestServeHTTP_LogsRejectOnUnknownRoom(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_ThrottlesRepeatedRoomNotFoundLogs(t *testing.T) {
+	h := hub.New(0)
+	var buf threadSafeBuffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	srv := httptest.NewServer(Handler{Hub: h, Logger: logger})
+	defer srv.Close()
+
+	const code = "THROT1"
+	for i := 0; i < 5; i++ {
+		resp, err := http.Get(srv.URL + "?room=" + code + "&token=anything")
+		if err != nil {
+			t.Fatalf("Get %d: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+
+	logs := buf.String()
+	infoCount := strings.Count(logs, "level=INFO msg=ws.reject reason=room_not_found room="+code)
+	debugCount := strings.Count(logs, "level=DEBUG msg=ws.reject reason=room_not_found room="+code)
+	if infoCount != 1 {
+		t.Fatalf("want exactly 1 INFO reject for %s; got %d. logs:\n%s", code, infoCount, logs)
+	}
+	if debugCount != 4 {
+		t.Fatalf("want 4 throttled DEBUG rejects for %s; got %d. logs:\n%s", code, debugCount, logs)
+	}
+	if !strings.Contains(logs, "throttled=true") {
+		t.Fatalf("want throttled=true marker; got:\n%s", logs)
+	}
+}
+
 func dialWebSocket(t *testing.T, baseURL, code, token string) (net.Conn, *bufio.Reader) {
 	t.Helper()
 	u, _ := url.Parse(baseURL)

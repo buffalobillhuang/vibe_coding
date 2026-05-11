@@ -23,12 +23,35 @@ const (
 	opPing  = 9
 	opPong  = 10
 
-	pingInterval = 20 * time.Second
-	pongWait     = 45 * time.Second
+	pingInterval = 3 * time.Second
+	pongWait     = 12 * time.Second
 	writeWait    = 10 * time.Second
 )
 
 var heartbeatPayload = []byte(`{"type":"heartbeat"}`)
+
+const rejectThrottleWindow = time.Minute
+
+var rejectThrottle = struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}{last: map[string]time.Time{}}
+
+func shouldLogRejectInfo(code string) bool {
+	rejectThrottle.mu.Lock()
+	defer rejectThrottle.mu.Unlock()
+	now := time.Now()
+	for k, t := range rejectThrottle.last {
+		if now.Sub(t) > rejectThrottleWindow*5 {
+			delete(rejectThrottle.last, k)
+		}
+	}
+	if last, ok := rejectThrottle.last[code]; ok && now.Sub(last) < rejectThrottleWindow {
+		return false
+	}
+	rejectThrottle.last[code] = now
+	return true
+}
 
 type Handler struct {
 	Hub         *hub.Hub
@@ -58,7 +81,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	room, ok := h.Hub.Get(code)
 	if !ok {
-		logger.Info("ws.reject", "reason", "room_not_found", "room", code, "remote", r.RemoteAddr)
+		if shouldLogRejectInfo(code) {
+			logger.Info("ws.reject", "reason", "room_not_found", "room", code, "remote", r.RemoteAddr)
+		} else {
+			logger.Debug("ws.reject", "reason", "room_not_found", "room", code, "remote", r.RemoteAddr, "throttled", true)
+		}
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}

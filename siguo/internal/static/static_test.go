@@ -210,9 +210,9 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 	js := string(data)
 	for _, want := range []string{
 		`const reconnectDelaysMs = [1000, 2000, 5000, 10000];`,
-		`const socketWatchdogIntervalMs = 5000;`,
-		`const socketHeartbeatTimeoutMs = 25000;`,
-		`const socketStalenessMs = 12000;`,
+		`const socketWatchdogIntervalMs = 1000;`,
+		`const socketHeartbeatTimeoutMs = 11000;`,
+		`const socketStalenessMs = 6000;`,
 		`connectionStatusText()`,
 		`function openSocket(viewer, isReconnect = false)`,
 		`state.lastSocketMessageAt = Date.now();`,
@@ -241,6 +241,23 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 		`setInterval(checkSocketHealth, socketWatchdogIntervalMs);`,
 		`document.addEventListener("visibilitychange",`,
 		`if (document.visibilityState !== "visible") return;`,
+		`async function attemptReconnect(viewer)`,
+		`async function probeRoomAlive()`,
+		`function handleRoomGone()`,
+		`if (state.reconnectAttempts >= 3) {`,
+		`if (res.status === 404 || res.status === 401) return false;`,
+		`function roomGoneOfferHTML()`,
+		`async function rejoinAfterGone()`,
+		`function dismissRoomGone()`,
+		`state.roomGoneOffer = {code: state.code, isViewer: state.viewer, lastError: ""};`,
+		`if (state.roomGoneOffer) return;`,
+		`id="roomGoneRejoin"`,
+		`id="roomGoneLeave"`,
+		`setTimeout(() => attemptReconnect(viewer), delay);`,
+		`function reconnectButtonHTML()`,
+		`id="reconnectBtn"`,
+		`log("手动重连");`,
+		`forceReconnect(state.viewer);`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("client should reconnect websockets and explain disconnected clicks; missing %q", want)
