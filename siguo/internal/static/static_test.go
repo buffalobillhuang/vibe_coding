@@ -239,6 +239,8 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 		`if (!state.reconnectTimer) scheduleReconnect(false);`,
 		`clearReconnectTimer();`,
 		`setInterval(checkSocketHealth, socketWatchdogIntervalMs);`,
+		`document.addEventListener("visibilitychange",`,
+		`if (document.visibilityState !== "visible") return;`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("client should reconnect websockets and explain disconnected clicks; missing %q", want)

@@ -1783,6 +1783,15 @@ function esc(s) {
 render();
 setInterval(tickTimer, 200);
 setInterval(checkSocketHealth, socketWatchdogIntervalMs);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (!state.code) return;
+  if (!state.viewer && !state.token) return;
+  if (socketLooksStale() || (state.ws && state.ws.readyState !== WebSocket.OPEN)) {
+    log("回到页面，检查连接");
+    forceReconnect(state.viewer);
+  }
+});
 const initialParams = new URLSearchParams(location.search);
 const initialWatchCode = initialParams.get("watch");
 const initialJoinCode = initialParams.get("join");
