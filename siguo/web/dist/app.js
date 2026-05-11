@@ -28,7 +28,7 @@ const quickChatPhrases = [
   "你太牛了",
   "掐死你 ：-/"
 ];
-const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];
+const pieceMarkerValues = ["?", "+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
 const socketWatchdogIntervalMs = 1000;
 const socketHeartbeatTimeoutMs = 15000;
@@ -234,7 +234,7 @@ function winnerLabel() {
 
 function victoryKicker() {
   if (state.viewer) return "军旗已定";
-  return currentSideWon() ? "凯歌高奏" : "胜负已分";
+  return currentSideWon() ? "正义之师 所向披靡" : "胜负乃兵家常事";
 }
 
 function victorySubline() {

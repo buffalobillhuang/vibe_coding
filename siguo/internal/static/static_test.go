@@ -62,7 +62,7 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 	}
 	js := string(jsData)
 	for _, want := range []string{
-		`const pieceMarkerValues = ["+", "++", "+++", "!", "!!", "!!!"];`,
+		`const pieceMarkerValues = ["?", "+", "++", "+++", "!", "!!", "!!!"];`,
 		`const pieceMarkerActions = [...pieceMarkerValues, "unmark"];`,
 		`${label}${pieceMarkHTML(marker)}`,
 		`if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;`,
@@ -618,7 +618,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"function currentSideWon()",
 		"return currentSideWon() ? \"我方获胜\" : \"对方获胜\";",
 		"function victoryKicker()",
-		"return currentSideWon() ? \"凯歌高奏\" : \"胜负已分\";",
+		"return currentSideWon() ? \"正义之师 所向披靡\" : \"胜负乃兵家常事\";",
 		"return currentSideWon() ? \"我方联军得胜\" : \"对方联军得胜\";",
 		"return currentSideWon() ? \"我方夺旗得胜\" : \"对方夺旗得胜\";",
 		"<span class=\"victory-kicker\">${victoryKicker()}</span>",
