@@ -9,3 +9,13 @@ lsof -ti :8080 | xargs kill -9
 or 
 
 pids=$(lsof -ti :8080) && [ -n "$pids" ] && kill $pids
+
+
+for docker on a cloud vm:
+
+  cd vibe_coding/
+  cd siguo/
+  git pull --ff-only
+  docker compose --profile cloud up -d --build
+
+docker compose logs siguo | grep ws. plus docker compose logs caddy
