@@ -74,7 +74,8 @@ const state = {
   connectionMessage: "",
   reconnectAttempts: 0,
   reconnectTimer: null,
-  lastSocketMessageAt: 0
+  lastSocketMessageAt: 0,
+  socketGeneration: 0
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
@@ -1268,16 +1269,7 @@ function connect() {
   openSocket(false);
 }
 
-async function connectViewer(code) {
-  code = String(code || "").toUpperCase();
-  const nameInput = document.querySelector("#name");
-  state.name = (nameInput ? nameInput.value : state.name || "").trim();
-  localStorage.setItem("siguo.name", state.name);
-  const status = await viewerRoomStatus(code);
-  if (!status.ok) {
-    log(status.message);
-    return;
-  }
+function beginViewerSession(code) {
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
@@ -1299,12 +1291,26 @@ async function connectViewer(code) {
   openSocket(true);
 }
 
+async function connectViewer(code) {
+  code = String(code || "").toUpperCase();
+  const nameInput = document.querySelector("#name");
+  state.name = (nameInput ? nameInput.value : state.name || "").trim();
+  localStorage.setItem("siguo.name", state.name);
+  const status = await viewerRoomStatus(code);
+  if (!status.ok) {
+    log(status.message);
+    return;
+  }
+  beginViewerSession(code);
+}
+
 function openSocket(viewer, isReconnect = false) {
   clearReconnectTimer();
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
   }
+  const socketGeneration = ++state.socketGeneration;
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const query = viewer
     ? `room=${state.code}&viewer=1&name=${encodeURIComponent(state.name)}`
@@ -1316,7 +1322,7 @@ function openSocket(viewer, isReconnect = false) {
   state.connectionMessage = isReconnect ? "正在重连" : "连接中";
   render();
   ws.onopen = () => {
-    if (state.ws !== ws) return;
+    if (state.ws !== ws || state.socketGeneration !== socketGeneration) return;
     state.lastSocketMessageAt = Date.now();
     state.connectionStatus = "connected";
     state.connectionMessage = "";
@@ -1324,17 +1330,17 @@ function openSocket(viewer, isReconnect = false) {
     log(viewer ? (isReconnect ? "观战已重连" : "已进入观战") : (isReconnect ? "已重连" : "已连接"));
   };
   ws.onclose = () => {
-    if (state.ws !== ws) return;
+    if (state.ws !== ws || state.socketGeneration !== socketGeneration) return;
     state.ws = null;
     state.lastSocketMessageAt = 0;
     state.selected = null;
     scheduleReconnect(viewer);
   };
   ws.onerror = () => {
-    if (state.ws === ws) ws.close();
+    if (state.ws === ws && state.socketGeneration === socketGeneration) ws.close();
   };
   ws.onmessage = e => {
-    if (state.ws !== ws) return;
+    if (state.ws !== ws || state.socketGeneration !== socketGeneration) return;
     state.lastSocketMessageAt = Date.now();
     onMessage(JSON.parse(e.data));
   };
@@ -1362,12 +1368,22 @@ function scheduleReconnect(viewer) {
 
 async function attemptReconnect(viewer) {
   state.reconnectTimer = null;
+  const reconnectGeneration = state.socketGeneration;
+  const reconnectCode = state.code;
+  const reconnectToken = state.token;
+  const reconnectViewer = state.viewer;
   if (state.reconnectAttempts >= 3) {
     const alive = await probeRoomAlive();
+    if (state.socketGeneration !== reconnectGeneration || state.code !== reconnectCode || state.token !== reconnectToken || state.viewer !== reconnectViewer || state.roomGoneOffer) {
+      return;
+    }
     if (!alive) {
       handleRoomGone();
       return;
     }
+  }
+  if (state.socketGeneration !== reconnectGeneration || state.code !== reconnectCode || state.token !== reconnectToken || state.viewer !== reconnectViewer || state.roomGoneOffer) {
+    return;
   }
   openSocket(viewer, true);
 }
@@ -1428,7 +1444,7 @@ async function rejoinAfterGone() {
         render();
         return;
       }
-      await connectViewer(offer.code);
+      beginViewerSession(offer.code);
       return;
     }
     const sessionToken = sessionTokenForRoom(offer.code);

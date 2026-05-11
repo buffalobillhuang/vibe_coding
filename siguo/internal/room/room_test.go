@@ -293,6 +293,146 @@ func TestReconnectDoesNotLetStaleDisconnectKillNewSocket(t *testing.T) {
 	}
 }
 
+func TestReconnectSendsSingleInitialRoomStateToReplacementConnection(t *testing.T) {
+	r := New("ABC123")
+	north, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join(north) error = %v", err)
+	}
+	south, err := r.Join("south", "")
+	if err != nil {
+		t.Fatalf("Join(south) error = %v", err)
+	}
+
+	northOut, _, err := r.Connect(north.Token)
+	if err != nil {
+		t.Fatalf("Connect(north) error = %v", err)
+	}
+	southOut, _, err := r.Connect(south.Token)
+	if err != nil {
+		t.Fatalf("Connect(south) error = %v", err)
+	}
+	drainMessages(northOut)
+	drainMessages(southOut)
+
+	replacementOut, _, err := r.Connect(north.Token)
+	if err != nil {
+		t.Fatalf("Reconnect(north) error = %v", err)
+	}
+
+	first := nextServerMessage(t, replacementOut)
+	if first.Type != "room.state" || first.Room == nil {
+		t.Fatalf("first reconnect message = %+v, want room.state snapshot", first)
+	}
+	second := nextServerMessage(t, replacementOut)
+	if second.Type != "view" {
+		t.Fatalf("second reconnect message = %+v, want view message", second)
+	}
+	if got := len(replacementOut); got != 0 {
+		t.Fatalf("replacement connection queued %d extra messages, want only room.state + view", got)
+	}
+
+	other := nextServerMessage(t, southOut)
+	if other.Type != "room.state" || other.Room == nil {
+		t.Fatalf("other player message = %+v, want room.state update", other)
+	}
+	if !other.Room.Seats[game.North].Connected {
+		t.Fatal("other player should see reconnecting player as connected")
+	}
+	if got := len(southOut); got != 0 {
+		t.Fatalf("other player queued %d unexpected extra messages after reconnect", got)
+	}
+}
+
+func TestSendLockedDropsBackpressuredPlayerConnection(t *testing.T) {
+	r := New("ABC123")
+	player, err := r.Join("north", "")
+	if err != nil {
+		t.Fatalf("Join() error = %v", err)
+	}
+
+	out, _, err := r.Connect(player.Token)
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	drainMessages(out)
+
+	r.mu.Lock()
+	for i := 0; i < cap(out); i++ {
+		r.sendLocked(player.Token, protocol.ServerMessage{Type: "error", Error: &protocol.ErrorMessage{Code: "fill", Message: "buffer"}})
+	}
+	r.sendLocked(player.Token, protocol.ServerMessage{Type: "error", Error: &protocol.ErrorMessage{Code: "overflow", Message: "buffer full"}})
+	r.mu.Unlock()
+
+	if player.Connected {
+		t.Fatal("backpressured player connection should be marked disconnected")
+	}
+	if got := r.connections[player.Token]; got != nil {
+		t.Fatal("backpressured player connection should be removed from active connections")
+	}
+
+	for i := 0; i < cap(out); i++ {
+		select {
+		case _, ok := <-out:
+			if !ok {
+				t.Fatalf("player channel closed before draining buffered messages at %d", i)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out draining player buffer at %d", i)
+		}
+	}
+	select {
+	case _, ok := <-out:
+		if ok {
+			t.Fatal("player channel should be closed after buffered messages drain")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for closed player channel")
+	}
+}
+
+func TestSendViewerLockedDropsBackpressuredViewerConnection(t *testing.T) {
+	r := newPlayingRoom(t)
+	out, id, err := r.ConnectViewer("observer")
+	if err != nil {
+		t.Fatalf("ConnectViewer() error = %v", err)
+	}
+	drainMessages(out)
+
+	r.mu.Lock()
+	for i := 0; i < cap(out); i++ {
+		r.sendViewerLocked(id, protocol.ServerMessage{Type: "error", Error: &protocol.ErrorMessage{Code: "fill", Message: "buffer"}})
+	}
+	r.sendViewerLocked(id, protocol.ServerMessage{Type: "error", Error: &protocol.ErrorMessage{Code: "overflow", Message: "buffer full"}})
+	r.mu.Unlock()
+
+	if got := r.viewers[id]; got != nil {
+		t.Fatal("backpressured viewer connection should be removed from active viewers")
+	}
+	if got := r.viewerNames[id]; got != "" {
+		t.Fatal("backpressured viewer should be removed from viewerNames")
+	}
+
+	for i := 0; i < cap(out); i++ {
+		select {
+		case _, ok := <-out:
+			if !ok {
+				t.Fatalf("viewer channel closed before draining buffered messages at %d", i)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out draining viewer buffer at %d", i)
+		}
+	}
+	select {
+	case _, ok := <-out:
+		if ok {
+			t.Fatal("viewer channel should be closed after buffered messages drain")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for closed viewer channel")
+	}
+}
+
 func TestFullSiguoLobbyPlayersCanSwapSeats(t *testing.T) {
 	r := New("ABC123")
 	north, err := r.Join("north", "")

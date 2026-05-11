@@ -223,7 +223,7 @@ func (r *Room) Connect(token string) (chan []byte, *Player, error) {
 	player.Connected = true
 	r.sendLocked(token, protocol.ServerMessage{Type: "room.state", Room: r.snapshotLocked(player.Seat)})
 	r.sendLocked(token, protocol.ServerMessage{Type: "view", View: r.viewForLocked(player.Seat)})
-	r.broadcastRoomLocked()
+	r.broadcastRoomExceptLocked(token)
 	return ch, player, nil
 }
 
@@ -1364,7 +1364,14 @@ func (r *Room) broadcastRoomAndViewsLocked() {
 }
 
 func (r *Room) broadcastRoomLocked() {
+	r.broadcastRoomExceptLocked("")
+}
+
+func (r *Room) broadcastRoomExceptLocked(skipToken string) {
 	for _, player := range r.players {
+		if player.Token == skipToken {
+			continue
+		}
 		r.sendLocked(player.Token, protocol.ServerMessage{Type: "room.state", Room: r.snapshotLocked(player.Seat)})
 	}
 	for id := range r.viewers {
@@ -1401,6 +1408,24 @@ func (r *Room) sendViewerErrorLocked(id, code, message string, refSeq int64) {
 	})
 }
 
+func (r *Room) dropBackpressuredPlayerLocked(token string, ch chan []byte) {
+	if current := r.connections[token]; current != nil && current == ch {
+		close(current)
+		delete(r.connections, token)
+		if player := r.players[token]; player != nil {
+			player.Connected = false
+		}
+	}
+}
+
+func (r *Room) dropBackpressuredViewerLocked(id string, ch chan []byte) {
+	if current := r.viewers[id]; current != nil && current == ch {
+		close(current)
+		delete(r.viewers, id)
+		delete(r.viewerNames, id)
+	}
+}
+
 func (r *Room) sendLocked(token string, msg protocol.ServerMessage) {
 	ch := r.connections[token]
 	if ch == nil {
@@ -1415,6 +1440,7 @@ func (r *Room) sendLocked(token string, msg protocol.ServerMessage) {
 	select {
 	case ch <- data:
 	default:
+		r.dropBackpressuredPlayerLocked(token, ch)
 	}
 }
 
@@ -1432,6 +1458,7 @@ func (r *Room) sendViewerLocked(id string, msg protocol.ServerMessage) {
 	select {
 	case ch <- data:
 	default:
+		r.dropBackpressuredViewerLocked(id, ch)
 	}
 }
 
