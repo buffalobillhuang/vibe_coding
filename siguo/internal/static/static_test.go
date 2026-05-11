@@ -212,7 +212,7 @@ func TestClientReconnectsWebSocketAndExplainsDisconnectedClicks(t *testing.T) {
 		`const reconnectDelaysMs = [1000, 2000, 5000, 10000];`,
 		`const socketWatchdogIntervalMs = 1000;`,
 		`const socketHeartbeatTimeoutMs = 15000;`,
-		`const socketStalenessMs = 6000;`,
+		`const socketStalenessMs = 13000;`,
 		`socketGeneration: 0`,
 		`connectionStatusText()`,
 		`function openSocket(viewer, isReconnect = false)`,
