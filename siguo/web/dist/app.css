@@ -1054,7 +1054,7 @@ input {
   transform: rotate(77deg) translateY(1px);
 }
 .selected .piece {
-  outline: 3px solid var(--gold);
+  outline: 3px solid var(--ok);
   outline-offset: 2px;
 }
 
