@@ -626,6 +626,21 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"return currentSideWon() ? \"我方联军得胜\" : \"对方联军得胜\";",
 		"return currentSideWon() ? \"我方夺旗得胜\" : \"对方夺旗得胜\";",
 		"<span class=\"victory-kicker\">${victoryKicker()}</span>",
+		`rulesLang: localStorage.getItem("siguo.rulesLang") || "hans",`,
+		`<button id="rulesBtn" class="rules-link" type="button">游戏规则</button>`,
+		`function rulesDialogHTML() {`,
+		`适用于四国 2v2 与军棋 1v1。`,
+		`modeCompareTitle: "模式区别",`,
+		`modeCompareTitle: "模式差異",`,
+		`<section class="rules-compare">`,
+		`<div class="rules-mode-grid">`,
+		`rules-mode-card ${currentMode() === key ? "current" : ""}`,
+		`<span class="rules-mode-badge">${esc(copy.currentModeLabel)}</span>`,
+		`山界为特殊通道，只有工兵可以进入；每个山界位置最多容纳一名工兵。工兵进入山界后，可以在相连山界间穿行，并可接入相邻可达的铁路；若山界内已有敌方工兵，则进入后立即交战。`,
+		`山界為特殊通道，只有工兵可以進入；每個山界位置最多容納一名工兵。工兵進入山界後，可以在相連山界間穿行，並可接入相鄰可達的鐵路；若山界內已有敵方工兵，則進入後立即交戰。`,
+		`北南为一队，东西为一队。`,
+		`北南為一隊，東西為一隊。`,
+		`<button id="rulesLangHant" type="button" class="toggle ${state.rulesLang === "hant" ? "on" : "off"}">繁體</button>`,
 		`return junqiSeatColor(winners[0]) === "red" ? "红方获胜" : "蓝方获胜"`,
 		"if (state.viewer) {",
 		"return `victory-${junqiSeatColor(state.seat)}`",
@@ -680,7 +695,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
 	}
 	css := string(cssData)
-	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", ".board-chat-item.team", ".board-chat-item.public", ".chat-line-team", ".chat-line-public", `.poem-window-art`, `.poem-window.is-loaded .poem-window-art`, `url("/picture02.png")`, "@keyframes poem-cross"} {
+	for _, want := range []string{".victory-layer", ".victory-red", ".victory-blue", ".victory-ew", ".victory-actions", "pointer-events: auto;", ".beauty", ".petal", ".culture-panel", ".watch-panel", ".watch-row", ".join-offer", ".quick-chat", ".quick-chat-btn", ".seat-swap-btn", ".board-chat-item.team", ".board-chat-item.public", ".chat-line-team", ".chat-line-public", `.poem-window-art`, `.poem-window.is-loaded .poem-window-art`, `url("/picture02.png")`, "@keyframes poem-cross", ".rules-overlay", ".rules-dialog", ".rules-tabs", ".rules-section", ".rules-link", ".rules-compare", ".rules-mode-grid", ".rules-mode-card.current", ".rules-mode-badge"} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing %q", want)
 		}

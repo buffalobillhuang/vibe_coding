@@ -296,6 +296,73 @@ func TestJoinRefusesReclaimWhenNameIsAmbiguous(t *testing.T) {
 	}
 }
 
+func TestConnectResetsLastSeqSoReloadedClientCanSendLowSeqMessages(t *testing.T) {
+	r := newPlayingRoom(t)
+	player := r.seats[game.North]
+	if player == nil {
+		t.Fatal("expected player at North")
+	}
+	// Simulate a previous session that pushed LastSeq forward.
+	player.LastSeq = 15
+	player.Connected = false
+
+	out, _, err := r.Connect(player.Token)
+	if err != nil {
+		t.Fatalf("Connect error = %v", err)
+	}
+	if player.LastSeq != 0 {
+		t.Fatalf("LastSeq after Connect = %d, want 0 (so a reloaded client's low seq is accepted)", player.LastSeq)
+	}
+	drainMessages(out)
+
+	// A reloaded client's first message uses seq=1. Before the fix this was
+	// silently dropped as a duplicate; now it must be processed.
+	raw, err := json.Marshal(protocol.ClientMessage{Type: "chat.send", Seq: 1, Channel: "all", Text: "hi"})
+	if err != nil {
+		t.Fatalf("Marshal error = %v", err)
+	}
+	r.Handle(player.Token, raw)
+
+	msg := nextServerMessage(t, out)
+	if msg.Type != "chat.msg" {
+		t.Fatalf("expected chat.msg broadcast after low-seq message; got %+v", msg)
+	}
+	if msg.Chat == nil || msg.Chat.Text != "hi" {
+		t.Fatalf("chat broadcast = %+v, want text=hi", msg.Chat)
+	}
+	if player.LastSeq != 1 {
+		t.Fatalf("LastSeq after processing seq=1 = %d, want 1", player.LastSeq)
+	}
+}
+
+func TestHandleStillDropsDuplicateSeqWithinSameConnection(t *testing.T) {
+	r := newPlayingRoom(t)
+	player := r.seats[game.North]
+	out, _, err := r.Connect(player.Token)
+	if err != nil {
+		t.Fatalf("Connect error = %v", err)
+	}
+	drainMessages(out)
+
+	raw, err := json.Marshal(protocol.ClientMessage{Type: "chat.send", Seq: 5, Channel: "all", Text: "first"})
+	if err != nil {
+		t.Fatalf("Marshal error = %v", err)
+	}
+	r.Handle(player.Token, raw)
+	if msg := nextServerMessage(t, out); msg.Type != "chat.msg" {
+		t.Fatalf("first message should broadcast as chat.msg; got %+v", msg)
+	}
+	drainMessages(out)
+
+	// Replay the same seq within the same connection: must not produce a
+	// second chat broadcast; the seq gate should still fire.
+	r.Handle(player.Token, raw)
+	msg := nextServerMessage(t, out)
+	if msg.Type != "room.state" {
+		t.Fatalf("duplicate seq should trigger snapshot reply; got %+v", msg)
+	}
+}
+
 func TestJoinStillRejectsUnknownNameAfterGameStarts(t *testing.T) {
 	r := newPlayingRoom(t)
 	if _, err := r.Join("stranger", ""); err == nil {

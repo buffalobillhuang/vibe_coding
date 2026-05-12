@@ -30,6 +30,124 @@ const quickChatPhrases = [
 ];
 const pieceMarkerValues = ["?", "+", "++", "+++", "!", "!!", "!!!"];
 const pieceMarkerActions = [...pieceMarkerValues, "unmark"];
+const rulesCopy = {
+  hans: {
+    dialogTitle: "游戏规则",
+    dialogIntro: "适用于四国 2v2 与军棋 1v1。",
+    currentModeLabel: "当前模式",
+    closeLabel: "关闭",
+    modeCompareTitle: "模式区别",
+    sections: [
+      {
+        title: "通用基础",
+        items: [
+          "双方先完成布阵，全部提交后开始对局。",
+          "棋子可以放在兵站和大本营；行营是安全格，驻入后不能被直接攻击。",
+          "军旗和地雷不能移动；进入大本营的棋子也不能再移动。"
+        ]
+      },
+      {
+        title: "走法与吃子",
+        items: [
+          "公路线每次只能走一步。",
+          "铁路线无阻挡时，工兵可沿铁路连续转弯行走；其他棋子只能沿铁路直线走任意步。",
+          "山界为特殊通道，只有工兵可以进入；每个山界位置最多容纳一名工兵。工兵进入山界后，可以在相连山界间穿行，并可接入相邻可达的铁路；若山界内已有敌方工兵，则进入后立即交战。",
+          "军衔大小依次为：司令 > 军长 > 师长 > 旅长 > 团长 > 营长 > 连长 > 排长 > 工兵。",
+          "工兵可以排雷；炸弹与任意棋子相遇都会同归于尽；同级相遇也会同归于尽。",
+          "除工兵和炸弹外，其他棋子撞上地雷会被消灭，地雷保留。"
+        ]
+      },
+      {
+        title: "布阵限制",
+        items: [
+          "炸弹不能放在第一行。",
+          "地雷只能放在最后两行。",
+          "军旗只能放在大本营。"
+        ]
+      },
+      {
+        title: "四国 2v2",
+        items: [
+          "北南为一队，东西为一队。",
+          "按照轮次由当前座位行动，队友共享胜负。",
+          "夺取敌方联军军旗，或令对方联军无棋可走，即为联军获胜。"
+        ]
+      },
+      {
+        title: "军棋 1v1",
+        items: [
+          "红蓝双方直接对抗，没有队友协作。",
+          "夺取对方军旗，或令对方无棋可走，即可获胜。",
+          "对局中可使用跳过、求和、投降等操作。"
+        ]
+      },
+      {
+        title: "观战说明",
+        items: [
+          "观战者只能查看局面与聊天，不能移动棋子或发起对局操作。"
+        ]
+      }
+    ]
+  },
+  hant: {
+    dialogTitle: "遊戲規則",
+    dialogIntro: "適用於四國 2v2 與軍棋 1v1。",
+    currentModeLabel: "目前模式",
+    closeLabel: "關閉",
+    modeCompareTitle: "模式差異",
+    sections: [
+      {
+        title: "通用基礎",
+        items: [
+          "雙方先完成佈陣，全部提交後開始對局。",
+          "棋子可以放在兵站和大本營；行營是安全格，駐入後不能被直接攻擊。",
+          "軍旗和地雷不能移動；進入大本營的棋子也不能再移動。"
+        ]
+      },
+      {
+        title: "走法與吃子",
+        items: [
+          "公路線每次只能走一步。",
+          "鐵路線無阻擋時，工兵可沿鐵路連續轉彎行走；其他棋子只能沿鐵路直線走任意步。",
+          "山界為特殊通道，只有工兵可以進入；每個山界位置最多容納一名工兵。工兵進入山界後，可以在相連山界間穿行，並可接入相鄰可達的鐵路；若山界內已有敵方工兵，則進入後立即交戰。",
+          "軍銜大小依次為：司令 > 軍長 > 師長 > 旅長 > 團長 > 營長 > 連長 > 排長 > 工兵。",
+          "工兵可以排雷；炸彈與任意棋子相遇都會同歸於盡；同級相遇也會同歸於盡。",
+          "除工兵和炸彈外，其他棋子撞上地雷會被消滅，地雷保留。"
+        ]
+      },
+      {
+        title: "佈陣限制",
+        items: [
+          "炸彈不能放在第一行。",
+          "地雷只能放在最後兩行。",
+          "軍旗只能放在大本營。"
+        ]
+      },
+      {
+        title: "四國 2v2",
+        items: [
+          "北南為一隊，東西為一隊。",
+          "按照輪次由當前座位行棋，隊友共享勝負。",
+          "奪取敵方聯軍軍旗，或令對方聯軍無棋可走，即為聯軍獲勝。"
+        ]
+      },
+      {
+        title: "軍棋 1v1",
+        items: [
+          "紅藍雙方直接對抗，沒有隊友協作。",
+          "奪取對方軍旗，或令對方無棋可走，即可獲勝。",
+          "對局中可使用跳過、求和、投降等操作。"
+        ]
+      },
+      {
+        title: "觀戰說明",
+        items: [
+          "觀戰者只能查看局面與聊天，不能移動棋子或發起對局操作。"
+        ]
+      }
+    ]
+  }
+};
 const socketWatchdogIntervalMs = 1000;
 const socketHeartbeatTimeoutMs = 15000;
 const socketStalenessMs = 13000;
@@ -56,6 +174,8 @@ const state = {
   lastTrail: null,
   selectedMarker: null,
   pieceMarks: {},
+  rulesOpen: false,
+  rulesLang: localStorage.getItem("siguo.rulesLang") || "hans",
   boardChats: [],
   boardChatLane: 0,
   boardChatTimer: null,
@@ -93,7 +213,7 @@ function render() {
     <div class="shell">
       <section class="table">
         <div class="topbar">
-          <div class="brand"><h1>四国军棋</h1><span id="roomStatus">${statusText()}</span></div>
+          <div class="brand"><h1>四国军棋</h1><button id="rulesBtn" class="rules-link" type="button">游戏规则</button><span id="roomStatus">${statusText()}</span></div>
           <div class="row" style="max-width:720px">
             <button id="watchBtn">观战室</button>
             ${inviteLinkButtonHTML()}
@@ -106,6 +226,7 @@ function render() {
             <button id="soundBtn" class="toggle ${state.sound ? "on" : "off"}">声音</button>
           </div>
         </div>
+        ${rulesDialogHTML()}
         ${watchRoomPanelHTML()}
         ${joinOfferHTML()}
         ${roomGoneOfferHTML()}
@@ -374,6 +495,47 @@ function joinOfferHTML() {
   return `<div class="panel join-offer">
     <div><b>无法加入 ${esc(offer.code)}</b><span>${esc(offer.message)} ${viewerText}</span></div>
     <div><button id="joinOfferClose">关闭</button>${viewerAction}</div>
+  </div>`;
+}
+
+function currentRulesCopy() {
+  return rulesCopy[state.rulesLang] || rulesCopy.hans;
+}
+
+function rulesDialogHTML() {
+  if (!state.rulesOpen) return "";
+  const copy = currentRulesCopy();
+  const modeSections = [
+    {key: "siguo", section: copy.sections[3]},
+    {key: "junqi", section: copy.sections[4]}
+  ];
+  const sharedSections = [copy.sections[0], copy.sections[1], copy.sections[2], copy.sections[5]];
+  return `<div class="rules-overlay" id="rulesOverlay">
+    <div class="rules-dialog panel" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+      <div class="rules-head">
+        <div class="rules-title-block">
+          <b id="rulesTitle">${esc(copy.dialogTitle)}</b>
+          <span>${esc(copy.dialogIntro)}</span>
+        </div>
+        <button id="rulesClose" type="button">${esc(copy.closeLabel)}</button>
+      </div>
+      <div class="rules-toolbar">
+        <div class="rules-tabs" aria-label="语言切换">
+          <button id="rulesLangHans" type="button" class="toggle ${state.rulesLang === "hans" ? "on" : "off"}">简体</button>
+          <button id="rulesLangHant" type="button" class="toggle ${state.rulesLang === "hant" ? "on" : "off"}">繁體</button>
+        </div>
+        <div class="rules-mode">${esc(copy.currentModeLabel)}：${esc(modeNames[currentMode()])}</div>
+      </div>
+      <div class="rules-body">
+        <section class="rules-compare">
+          <h3>${esc(copy.modeCompareTitle)}</h3>
+          <div class="rules-mode-grid">
+            ${modeSections.map(({key, section}) => `<section class="rules-mode-card ${currentMode() === key ? "current" : ""}"><div class="rules-mode-card-head"><h4>${esc(section.title)}</h4>${currentMode() === key ? `<span class="rules-mode-badge">${esc(copy.currentModeLabel)}</span>` : ""}</div><ul>${section.items.map(item => `<li>${esc(item)}</li>`).join("")}</ul></section>`).join("")}
+          </div>
+        </section>
+        ${sharedSections.map(section => `<section class="rules-section"><h3>${esc(section.title)}</h3><ul>${section.items.map(item => `<li>${esc(item)}</li>`).join("")}</ul></section>`).join("")}
+      </div>
+    </div>
   </div>`;
 }
 
@@ -1001,6 +1163,18 @@ function bind() {
   document.querySelector("#create").onclick = createRoom;
   document.querySelector("#join").onclick = joinRoom;
   document.querySelector("#watchBtn").onclick = openWatchRoom;
+  const rulesBtn = document.querySelector("#rulesBtn");
+  if (rulesBtn) rulesBtn.onclick = () => { state.rulesOpen = true; render(); };
+  const rulesClose = document.querySelector("#rulesClose");
+  if (rulesClose) rulesClose.onclick = closeRules;
+  const rulesOverlay = document.querySelector("#rulesOverlay");
+  if (rulesOverlay) rulesOverlay.onclick = e => {
+    if (e.target === rulesOverlay) closeRules();
+  };
+  const rulesLangHans = document.querySelector("#rulesLangHans");
+  if (rulesLangHans) rulesLangHans.onclick = () => setRulesLang("hans");
+  const rulesLangHant = document.querySelector("#rulesLangHant");
+  if (rulesLangHant) rulesLangHant.onclick = () => setRulesLang("hant");
   const inviteLinkBtn = document.querySelector("#inviteLinkBtn");
   if (inviteLinkBtn) inviteLinkBtn.onclick = () => copyInviteLink(state.code);
   const viewerLinkBtn = document.querySelector("#viewerLinkBtn");
@@ -1086,6 +1260,19 @@ function bind() {
   document.querySelector("#code").oninput = e => state.code = e.target.value.toUpperCase();
   document.querySelectorAll(".cell").forEach(cell => cell.onclick = () => clickCell(cell));
   tickTimer();
+}
+
+function closeRules() {
+  if (!state.rulesOpen) return;
+  state.rulesOpen = false;
+  render();
+}
+
+function setRulesLang(lang) {
+  if (!rulesCopy[lang] || state.rulesLang === lang) return;
+  state.rulesLang = lang;
+  localStorage.setItem("siguo.rulesLang", lang);
+  render();
 }
 
 function confirmAction(message, fn) {

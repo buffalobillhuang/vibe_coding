@@ -228,6 +228,11 @@ func (r *Room) Connect(token string) (chan []byte, *Player, error) {
 	ch := make(chan []byte, 32)
 	r.connections[token] = ch
 	player.Connected = true
+	// A fresh WebSocket means a fresh client session: page reloads reset
+	// state.seq to 1 in the browser. If we kept the previous LastSeq, all
+	// post-reload messages with low seq numbers would be silently treated
+	// as duplicates and dropped.
+	player.LastSeq = 0
 	r.sendLocked(token, protocol.ServerMessage{Type: "room.state", Room: r.snapshotLocked(player.Seat)})
 	r.sendLocked(token, protocol.ServerMessage{Type: "view", View: r.viewForLocked(player.Seat)})
 	r.broadcastRoomExceptLocked(token)
