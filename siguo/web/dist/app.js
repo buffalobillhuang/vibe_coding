@@ -361,6 +361,7 @@ function inviteLinkButtonHTML() {
 
 function reconnectButtonHTML() {
   if (!state.code) return "";
+  if (state.roomGoneOffer) return "";
   const urgent = socketLooksStale() || state.connectionStatus === "reconnecting" || state.connectionStatus === "offline" || (state.ws && state.ws.readyState !== WebSocket.OPEN);
   return `<button id="reconnectBtn" class="${urgent ? "urgent" : ""}" title="立即重连">重连</button>`;
 }
@@ -1263,6 +1264,7 @@ async function acceptJoin(res, opts = {}) {
   state.viewer = false;
   state.watchOpen = false;
   state.joinOffer = null;
+  state.roomGoneOffer = null;
   state.selectedMarker = null;
   state.pieceMarks = {};
   localStorage.setItem("siguo.code", state.code);
@@ -1303,6 +1305,7 @@ function beginViewerSession(code) {
   state.viewer = true;
   state.watchOpen = false;
   state.joinOffer = null;
+  state.roomGoneOffer = null;
   state.code = code;
   state.token = "";
   state.host = false;
@@ -1994,15 +1997,20 @@ function esc(s) {
 render();
 setInterval(tickTimer, 200);
 setInterval(checkSocketHealth, socketWatchdogIntervalMs);
+let lastVisibilityReconnectAt = 0;
+const visibilityReconnectCooldownMs = 5000;
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   if (state.roomGoneOffer) return;
   if (!state.code) return;
   if (!state.viewer && !state.token) return;
-  if (socketLooksStale() || (state.ws && state.ws.readyState !== WebSocket.OPEN)) {
-    log("回到页面，检查连接");
-    forceReconnect(state.viewer);
-  }
+  const rs = state.ws && state.ws.readyState;
+  const deadOrClosing = state.ws && (rs === WebSocket.CLOSING || rs === WebSocket.CLOSED);
+  if (!(socketLooksStale() || deadOrClosing)) return;
+  if (Date.now() - lastVisibilityReconnectAt < visibilityReconnectCooldownMs) return;
+  lastVisibilityReconnectAt = Date.now();
+  log("回到页面，检查连接");
+  forceReconnect(state.viewer);
 });
 const initialParams = new URLSearchParams(location.search);
 const initialWatchCode = initialParams.get("watch");
