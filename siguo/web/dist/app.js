@@ -195,7 +195,8 @@ const state = {
   reconnectAttempts: 0,
   reconnectTimer: null,
   lastSocketMessageAt: 0,
-  socketGeneration: 0
+  socketGeneration: 0,
+  socketOpenedAt: 0
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
@@ -295,8 +296,18 @@ function socketLooksStale() {
   return Date.now() - state.lastSocketMessageAt > socketStalenessMs;
 }
 
+const forceReconnectInflightGraceMs = 5000;
+
 function forceReconnect(viewer) {
   if (state.roomGoneOffer) return;
+  // Don't kill a fresh handshake just because the user mashed 重连. If a WS
+  // is in CONNECTING state and was opened less than ~5s ago, ignore the
+  // request and let the in-flight connect finish.
+  if (state.ws && state.ws.readyState === WebSocket.CONNECTING &&
+      state.socketOpenedAt && Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs) {
+    log("正在重连中，请稍候");
+    return;
+  }
   clearReconnectTimer();
   if (state.ws) {
     state.ws.onclose = null;
@@ -1563,6 +1574,7 @@ function openSocket(viewer, isReconnect = false) {
   const ws = new WebSocket(`${proto}://${location.host}/ws?${query}`);
   state.ws = ws;
   state.lastSocketMessageAt = 0;
+  state.socketOpenedAt = Date.now();
   state.connectionStatus = isReconnect ? "reconnecting" : "connecting";
   state.connectionMessage = isReconnect ? "正在重连" : "连接中";
   render();
