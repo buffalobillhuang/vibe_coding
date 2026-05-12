@@ -117,6 +117,13 @@ func (r *Room) Join(name, token string) (*Player, error) {
 		}
 	}
 	if r.phase != PhaseLobby {
+		if name != "" {
+			if match, err := r.reclaimByNameLocked(name); err != nil {
+				return nil, err
+			} else if match != nil {
+				return match, nil
+			}
+		}
 		return nil, errors.New("game already started")
 	}
 	if len(r.seats) >= len(game.ActiveSeats(r.mode)) {
@@ -1504,6 +1511,33 @@ func (r *Room) viewerNameConflictsPlayerLocked(name string) bool {
 		}
 	}
 	return false
+}
+
+// reclaimByNameLocked finds a player in this room whose name matches `name`
+// (case-insensitive, trimmed). Used when a session token has been lost and the
+// client is trying to rejoin an in-progress game by typing the same room code
+// and name. Returns (nil, nil) if no player matches.
+func (r *Room) reclaimByNameLocked(name string) (*Player, error) {
+	target := strings.ToLower(cleanName(name))
+	if target == "" {
+		return nil, nil
+	}
+	var match *Player
+	for _, p := range r.players {
+		if strings.ToLower(cleanName(p.Name)) == target {
+			if match != nil {
+				return nil, errors.New("name conflicts with another seat; cannot rejoin")
+			}
+			match = p
+		}
+	}
+	if match == nil {
+		return nil, nil
+	}
+	if match.Connected {
+		return nil, errors.New("seat still in use; try again shortly")
+	}
+	return match, nil
 }
 
 func (r *Room) defaultPlayerNameLocked() string {

@@ -237,6 +237,74 @@ func TestJoinAssignsSystemNamesWhenBlank(t *testing.T) {
 	}
 }
 
+func TestJoinReclaimsSeatByNameWhenTokenLost(t *testing.T) {
+	r := newPlayingRoom(t)
+	original := r.seats[game.North]
+	if original == nil {
+		t.Fatal("expected a player seated at North")
+	}
+	// Simulate browser-closed: player no longer has an active WS.
+	original.Connected = false
+
+	reclaim, err := r.Join(original.Name, "")
+	if err != nil {
+		t.Fatalf("Join(name, empty token) error = %v", err)
+	}
+	if reclaim != original {
+		t.Fatalf("Join returned a different *Player; want same seat reclaim")
+	}
+	if reclaim.Token != original.Token {
+		t.Fatalf("reclaim should return the existing token; got %q want %q", reclaim.Token, original.Token)
+	}
+	if reclaim.Seat != original.Seat {
+		t.Fatalf("reclaim should keep the original seat; got %v want %v", reclaim.Seat, original.Seat)
+	}
+
+	// Case-insensitive, with surrounding whitespace.
+	if _, err := r.Join("  "+strings.ToUpper(original.Name)+"  ", ""); err != nil {
+		t.Fatalf("case-insensitive reclaim error = %v", err)
+	}
+}
+
+func TestJoinRefusesReclaimWhenSeatStillActive(t *testing.T) {
+	r := newPlayingRoom(t)
+	original := r.seats[game.North]
+	if original == nil {
+		t.Fatal("expected a player seated at North")
+	}
+	original.Connected = true
+
+	if _, err := r.Join(original.Name, ""); err == nil {
+		t.Fatal("Join with active seat should fail, got nil error")
+	} else if !strings.Contains(err.Error(), "seat still in use") {
+		t.Fatalf("Join error = %q, want 'seat still in use'", err.Error())
+	}
+}
+
+func TestJoinRefusesReclaimWhenNameIsAmbiguous(t *testing.T) {
+	r := newPlayingRoom(t)
+	// Force two seats to share a name.
+	r.seats[game.North].Name = "duplicate"
+	r.seats[game.East].Name = "duplicate"
+	r.seats[game.North].Connected = false
+	r.seats[game.East].Connected = false
+
+	if _, err := r.Join("duplicate", ""); err == nil {
+		t.Fatal("Join with ambiguous name should fail, got nil error")
+	} else if !strings.Contains(err.Error(), "name conflicts") {
+		t.Fatalf("Join error = %q, want 'name conflicts'", err.Error())
+	}
+}
+
+func TestJoinStillRejectsUnknownNameAfterGameStarts(t *testing.T) {
+	r := newPlayingRoom(t)
+	if _, err := r.Join("stranger", ""); err == nil {
+		t.Fatal("Join with unknown name after start should fail")
+	} else if !strings.Contains(err.Error(), "game already started") {
+		t.Fatalf("Join error = %q, want 'game already started'", err.Error())
+	}
+}
+
 func TestReconnectDoesNotLetStaleDisconnectKillNewSocket(t *testing.T) {
 	r := New("ABC123")
 	player, err := r.Join("north", "")
