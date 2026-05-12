@@ -1983,7 +1983,7 @@ function shouldPlaySetupMusic() {
 
 function ensureSetupMusic() {
   if (state.setupMusic) return state.setupMusic;
-  const audio = new Audio("/song.mp3");
+  const audio = new Audio("/song-small.mp3");
   audio.preload = "auto";
   audio.loop = true;
   audio.volume = 0.32;

@@ -21,7 +21,7 @@ func TestStaticHandlerSetsCacheControlByAssetType(t *testing.T) {
 		{path: "/", want: "no-cache"},
 		{path: "/app.js", want: "no-cache"},
 		{path: "/app.css", want: "no-cache"},
-		{path: "/song.mp3", want: "public, max-age=3600"},
+		{path: "/song-small.mp3", want: "public, max-age=3600"},
 		{path: "/setup-music.ogg", want: "public, max-age=3600"},
 		{path: "/picture01.png", want: "public, max-age=3600"},
 		{path: "/picture02.png", want: "public, max-age=3600"},

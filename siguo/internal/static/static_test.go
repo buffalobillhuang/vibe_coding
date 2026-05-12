@@ -661,7 +661,7 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 		"poem-title",
 		"明·杨慎",
 		"滚滚长江东逝水",
-		"/song.mp3",
+		"/song-small.mp3",
 		`cultureImageLoaded: false,`,
 		`function warmCultureImage()`,
 		`const startedAt = performance.now();`,
@@ -713,8 +713,8 @@ func TestVictoryAndSetupCultureUIAreBundled(t *testing.T) {
 	if _, err := FS.ReadFile("dist/setup-music.ogg"); err != nil {
 		t.Fatalf("ReadFile(dist/setup-music.ogg) error = %v", err)
 	}
-	if _, err := FS.ReadFile("dist/song.mp3"); err != nil {
-		t.Fatalf("ReadFile(dist/song.mp3) error = %v", err)
+	if _, err := FS.ReadFile("dist/song-small.mp3"); err != nil {
+		t.Fatalf("ReadFile(dist/song-small.mp3) error = %v", err)
 	}
 	if _, err := FS.ReadFile("dist/picture02.png"); err != nil {
 		t.Fatalf("ReadFile(dist/picture02.png) error = %v", err)
