@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"siguo/internal/hub"
@@ -133,4 +136,164 @@ func startHTTPTestRoom(t *testing.T, r *room.Room) {
 		t.Fatalf("Marshal(room.start) error = %v", err)
 	}
 	r.Handle(host.Token, raw)
+}
+
+func TestOriginTrackerDedupesAndSorts(t *testing.T) {
+	tr := newOriginTracker()
+	tr.add("https://b.example")
+	tr.add("http://a.example")
+	tr.add("https://b.example") // duplicate
+	tr.add("")                  // empty
+	tr.add("   ")               // whitespace
+	tr.add("http://c.example/") // trailing slash
+
+	got := tr.list()
+	want := []string{"http://a.example", "http://c.example", "https://b.example"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("list = %v, want %v", got, want)
+	}
+}
+
+func TestHandleOriginsReturnsTrackedList(t *testing.T) {
+	tr := newOriginTracker()
+	tr.add("http://1.2.3.4")
+	tr.add("https://example.test")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/origins", nil)
+	rec := httptest.NewRecorder()
+	handleOrigins(tr).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var resp struct {
+		Origins []string `json:"origins"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	want := []string{"http://1.2.3.4", "https://example.test"}
+	if !reflect.DeepEqual(resp.Origins, want) {
+		t.Fatalf("origins = %v, want %v", resp.Origins, want)
+	}
+}
+
+func TestDetectPublicIPReturnsFirstValidResponse(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not-an-ip\n"))
+	}))
+	defer bad.Close()
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("203.0.113.7\n"))
+	}))
+	defer good.Close()
+
+	got := detectPublicIP(context.Background(), []string{bad.URL, good.URL})
+	if got != "203.0.113.7" {
+		t.Fatalf("ip = %q, want 203.0.113.7", got)
+	}
+}
+
+func TestEnvBoolParsesCommonTruthyValues(t *testing.T) {
+	for _, v := range []string{"true", "TRUE", "1", "yes", "on", "On"} {
+		t.Setenv("SIGUO_TEST_FLAG", v)
+		if !envBool("SIGUO_TEST_FLAG", false) {
+			t.Fatalf("envBool(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"false", "0", "no", "off", "FALSE"} {
+		t.Setenv("SIGUO_TEST_FLAG", v)
+		if envBool("SIGUO_TEST_FLAG", true) {
+			t.Fatalf("envBool(%q) = true, want false", v)
+		}
+	}
+	t.Setenv("SIGUO_TEST_FLAG", "")
+	if !envBool("SIGUO_TEST_FLAG", true) {
+		t.Fatal("envBool(empty) should fall back to default true")
+	}
+	if envBool("SIGUO_TEST_FLAG", false) {
+		t.Fatal("envBool(empty) should fall back to default false")
+	}
+}
+
+func TestDetectPublicIPReturnsEmptyWhenAllFail(t *testing.T) {
+	// Closed server; both attempts should fail at the dial step.
+	bad1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("garbage"))
+	}))
+	bad1.Close()
+	bad2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(""))
+	}))
+	bad2.Close()
+
+	got := detectPublicIP(context.Background(), []string{bad1.URL, bad2.URL})
+	if got != "" {
+		t.Fatalf("ip = %q, want empty", got)
+	}
+}
+
+
+func TestDetectLANOriginsPrefersOutboundPrivateIPv4(t *testing.T) {
+	got := detectLANOrigins(":8080", []lanInterfaceAddr{
+		{Name: "bridge100", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.64.1")},
+		{Name: "en0", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.1.55")},
+	}, net.ParseIP("192.168.1.55"), false)
+	want := []string{"http://192.168.1.55:8080"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("origins = %v, want %v", got, want)
+	}
+}
+
+func TestDetectLANOriginsUsesExplicitListenerHost(t *testing.T) {
+	got := detectLANOrigins("192.168.1.77:1080", nil, nil, false)
+	want := []string{"http://192.168.1.77:1080"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("origins = %v, want %v", got, want)
+	}
+}
+
+
+func TestDetectLANOriginsRanksPhysicalInterfaceAboveBridge(t *testing.T) {
+	got := detectLANOrigins(":8080", []lanInterfaceAddr{
+		{Name: "bridge100", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.64.1")},
+		{Name: "en0", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.3.157")},
+	}, nil, false)
+	want := []string{"http://192.168.3.157:8080"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("origins = %v, want %v", got, want)
+	}
+}
+
+
+func TestDetectLANOriginsFallsBackToSinglePrivateIPv4(t *testing.T) {
+	got := detectLANOrigins(":8080", []lanInterfaceAddr{
+		{Name: "en0", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.1.55")},
+	}, nil, false)
+	want := []string{"http://192.168.1.55:8080"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("origins = %v, want %v", got, want)
+	}
+}
+
+func TestDetectLANOriginsSkipsLoopbackAndContainers(t *testing.T) {
+	privateAddrs := []lanInterfaceAddr{
+		{Name: "en0", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.1.55")},
+	}
+	if got := detectLANOrigins("127.0.0.1:8080", privateAddrs, nil, false); len(got) != 0 {
+		t.Fatalf("loopback listener origins = %v, want empty", got)
+	}
+	if got := detectLANOrigins(":8080", privateAddrs, nil, true); len(got) != 0 {
+		t.Fatalf("container origins = %v, want empty", got)
+	}
+}
+
+func TestDetectLANOriginsSkipsOnlyVirtualPrivateInterfaces(t *testing.T) {
+	got := detectLANOrigins(":8080", []lanInterfaceAddr{
+		{Name: "bridge100", Flags: net.FlagUp | net.FlagBroadcast, IP: net.ParseIP("192.168.64.1")},
+		{Name: "utun4", Flags: net.FlagUp | net.FlagPointToPoint, IP: net.ParseIP("10.0.0.8")},
+	}, nil, false)
+	if len(got) != 0 {
+		t.Fatalf("origins = %v, want empty", got)
+	}
 }

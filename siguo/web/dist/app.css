@@ -493,6 +493,62 @@ input {
   gap: 8px;
 }
 
+.share-link-offer {
+  margin-top: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  border-color: rgba(215, 182, 106, .5);
+}
+
+.share-link-header {
+  display: grid;
+  gap: 4px;
+}
+
+.share-link-header b {
+  font-size: 16px;
+}
+
+.share-link-list {
+  display: grid;
+  gap: 6px;
+}
+
+.share-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(21, 20, 15, .5);
+  border: 1px solid rgba(215, 182, 106, .22);
+  border-radius: 4px;
+}
+
+.share-link-label {
+  color: var(--muted);
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.share-link-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  user-select: all;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.share-link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .quick-chat {
   display: flex;
   flex-wrap: wrap;

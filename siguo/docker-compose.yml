@@ -2,6 +2,12 @@ services:
   siguo:
     build: .
     command: ["--addr", ":8080"]
+    environment:
+      # Cloud-with-Caddy deploys: detect the VM's public egress IP and
+      # advertise it as an invite-link alternate. LAN-direct deploys
+      # (no Caddy, port 1080) should leave this off — the detected IP
+      # wouldn't reach a LAN-only siguo.
+      SIGUO_DETECT_PUBLIC_IP: "true"
     ports:
       - "8080:8080"
     restart: unless-stopped

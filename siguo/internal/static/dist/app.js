@@ -187,6 +187,7 @@ const state = {
   watchRooms: [],
   joinOffer: null,
   roomGoneOffer: null,
+  shareLinkOffer: null,
   cultureImageLoaded: false,
   cultureImageRequested: false,
   cultureImageLoader: null,
@@ -196,7 +197,8 @@ const state = {
   reconnectTimer: null,
   lastSocketMessageAt: 0,
   socketGeneration: 0,
-  socketOpenedAt: 0
+  socketOpenedAt: 0,
+  reconnectInFlight: false
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
@@ -231,6 +233,7 @@ function render() {
         ${watchRoomPanelHTML()}
         ${joinOfferHTML()}
         ${roomGoneOfferHTML()}
+        ${shareLinkOfferHTML()}
         ${requestBannerHTML()}
         <div class="board-wrap">${victoryHTML()}${boardHTML()}</div>
       </section>
@@ -300,11 +303,12 @@ const forceReconnectInflightGraceMs = 5000;
 
 function forceReconnect(viewer) {
   if (state.roomGoneOffer) return;
-  // Don't kill a fresh handshake just because the user mashed 重连. If a WS
-  // is in CONNECTING state and was opened less than ~5s ago, ignore the
-  // request and let the in-flight connect finish.
-  if (state.ws && state.ws.readyState === WebSocket.CONNECTING &&
-      state.socketOpenedAt && Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs) {
+  // Don't tear down a freshly-opened socket on rapid 重连 mash-clicks. The
+  // 5s grace covers both the handshake (CONNECTING) and the immediate
+  // post-open window (OPEN), because the user has no useful information in
+  // the first few seconds anyway.
+  if (state.ws && state.socketOpenedAt &&
+      Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs) {
     log("正在重连中，请稍候");
     return;
   }
@@ -320,6 +324,53 @@ function forceReconnect(viewer) {
   state.connectionStatus = "reconnecting";
   state.connectionMessage = "连接卡住，正在重连";
   openSocket(viewer, true);
+}
+
+// Player reconnect that piggybacks on the same REST flow as 加入. More robust
+// than tearing down/reopening the WS directly: server can token-reclaim or
+// name-reclaim the seat, and the awaited fetch naturally serializes
+// mash-clicks. Viewers fall through to forceReconnect (no analogous REST
+// endpoint for viewer reseating).
+async function reconnectViaJoin() {
+  if (state.roomGoneOffer) return;
+  if (!state.code) return;
+  if (state.viewer) {
+    forceReconnect(true);
+    return;
+  }
+  if (state.reconnectInFlight) {
+    log("正在重连中，请稍候");
+    return;
+  }
+  const name = (state.name || "").trim();
+  if (!name) {
+    log("请先输入昵称再重连");
+    return;
+  }
+  state.reconnectInFlight = true;
+  state.connectionStatus = "reconnecting";
+  state.connectionMessage = "正在重连";
+  render();
+  try {
+    const sessionToken = sessionTokenForRoom(state.code);
+    const res = await fetch(`/api/rooms/${encodeURIComponent(state.code)}/join`, {
+      method: "POST",
+      body: JSON.stringify({name, sessionToken}),
+    });
+    if (!res.ok) {
+      const msg = await responseErrorText(res);
+      log(`无法重连：${msg}`);
+      if (res.status === 404) {
+        handleRoomGone();
+      }
+      return;
+    }
+    await acceptJoin(res);
+  } catch (e) {
+    log(`无法重连：${e}`);
+  } finally {
+    state.reconnectInFlight = false;
+  }
 }
 
 function setupCountdownText() {
@@ -495,7 +546,9 @@ function reconnectButtonHTML() {
   if (!state.code) return "";
   if (state.roomGoneOffer) return "";
   const urgent = socketLooksStale() || state.connectionStatus === "reconnecting" || state.connectionStatus === "offline" || (state.ws && state.ws.readyState !== WebSocket.OPEN);
-  return `<button id="reconnectBtn" class="${urgent ? "urgent" : ""}" title="立即重连">重连</button>`;
+  const inGrace = state.ws && state.socketOpenedAt && Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs;
+  const disabled = (inGrace || state.reconnectInFlight) ? "disabled" : "";
+  return `<button id="reconnectBtn" class="${urgent ? "urgent" : ""}" ${disabled} title="立即重连">重连</button>`;
 }
 
 function joinOfferHTML() {
@@ -557,6 +610,22 @@ function roomGoneOfferHTML() {
   return `<div class="panel room-gone-offer">
     <div><b>对局 ${esc(offer.code)} 已结束或不存在</b><span>可以尝试重新进入；如果对局已结束，请返回大厅。</span>${note}</div>
     <div><button id="roomGoneLeave">返回大厅</button><button id="roomGoneRejoin" class="primary">重新进入</button></div>
+  </div>`;
+}
+
+function shareLinkOfferHTML() {
+  const offer = state.shareLinkOffer;
+  if (!offer) return "";
+  const rows = offer.urls.map((url, i) => {
+    const label = offer.urls.length === 1
+      ? "链接"
+      : (i === 0 ? "主链接" : "备用");
+    return `<div class="share-link-row"><span class="share-link-label">${esc(label)}：</span><code class="share-link-url">${esc(url)}</code></div>`;
+  }).join("");
+  return `<div class="panel share-link-offer">
+    <div class="share-link-header"><b>${esc(offer.label)}</b><span class="subtle">点击下方文字可选中复制，或使用按钮一键复制。</span></div>
+    <div class="share-link-list">${rows}</div>
+    <div class="share-link-actions"><button id="shareLinkClose">关闭</button><button id="shareLinkCopy" class="primary">复制全部</button></div>
   </div>`;
 }
 
@@ -1023,6 +1092,11 @@ function tickTimer() {
   if (!state.room) return;
   const status = document.querySelector("#roomStatus");
   if (status) status.textContent = statusText();
+  const reconnectBtn = document.querySelector("#reconnectBtn");
+  if (reconnectBtn) {
+    const inGrace = state.ws && state.socketOpenedAt && Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs;
+    reconnectBtn.disabled = !!(inGrace || state.reconnectInFlight);
+  }
   const phase = state.room.phase;
   const turn = state.room.turn;
   const deadline = state.room.moveDeadlineMs || 0;
@@ -1198,6 +1272,22 @@ function bind() {
   if (roomGoneRejoin) roomGoneRejoin.onclick = rejoinAfterGone;
   const roomGoneLeave = document.querySelector("#roomGoneLeave");
   if (roomGoneLeave) roomGoneLeave.onclick = dismissRoomGone;
+  const shareLinkClose = document.querySelector("#shareLinkClose");
+  if (shareLinkClose) shareLinkClose.onclick = () => { state.shareLinkOffer = null; render(); };
+  const shareLinkCopy = document.querySelector("#shareLinkCopy");
+  if (shareLinkCopy) shareLinkCopy.onclick = async () => {
+    const offer = state.shareLinkOffer;
+    if (!offer) return;
+    const formatted = shareLinkOfferText(offer);
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(formatted);
+        log("已复制到剪贴板");
+        return;
+      } catch {}
+    }
+    log("自动复制失败，请手动选中链接复制");
+  };
   const watchRefreshBtn = document.querySelector("#watchRefreshBtn");
   if (watchRefreshBtn) watchRefreshBtn.onclick = refreshWatchRooms;
   const watchCloseBtn = document.querySelector("#watchCloseBtn");
@@ -1211,7 +1301,7 @@ function bind() {
   const reconnectBtn = document.querySelector("#reconnectBtn");
   if (reconnectBtn) reconnectBtn.onclick = () => {
     log("手动重连");
-    forceReconnect(state.viewer);
+    reconnectViaJoin();
   };
   const setupMusicBtn = document.querySelector("#setupMusicBtn");
   if (setupMusicBtn) setupMusicBtn.onclick = () => {
@@ -1321,13 +1411,14 @@ function viewerURL(code) {
   return shareURL("watch", code);
 }
 
-function inviteURL(code) {
+async function inviteURL(code) {
   const inviteName = window.prompt("给被邀请玩家取个名字（可留空，由系统分配）", "") || "";
-  return shareURL("join", code, inviteName.trim() ? {name: inviteName.trim()} : null);
+  const urls = await shareURLs("join", code, inviteName.trim() ? {name: inviteName.trim()} : null);
+  return urls[0] || "";
 }
 
-function shareURL(param, code, extras = null) {
-  const origin = shareOrigin();
+function shareURL(param, code, extras = null, originOverride = null) {
+  const origin = originOverride || shareOrigin();
   if (!origin) return "";
   const url = new URL(location.pathname, origin);
   url.searchParams.set(param, code);
@@ -1339,42 +1430,94 @@ function shareURL(param, code, extras = null) {
   return url.href;
 }
 
+function isLoopbackHostname(hostname) {
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes((hostname || "").toLowerCase());
+}
+
+// Returns an array of URLs: the primary (location.origin) plus any alternate
+// origins the server advertises via /api/origins (e.g. the detected public
+// IP). De-duplicates if alternates resolve to the same string as primary.
+async function shareURLs(param, code, extras = null) {
+  const urls = [];
+  const primary = shareURL(param, code, extras);
+  const alternates = await fetchKnownOrigins();
+  const preferAlternates = isLoopbackHostname(location.hostname);
+  if (preferAlternates) urls.length = 0;
+  if (!preferAlternates && primary) urls.push(primary);
+  for (const alt of alternates) {
+    const altUrl = shareURL(param, code, extras, alt);
+    if (altUrl && altUrl !== primary && !urls.includes(altUrl)) urls.push(altUrl);
+  }
+  if (!urls.length && primary) urls.push(primary);
+  return urls;
+}
+
+let cachedKnownOrigins = null;
+
+// fetchKnownOrigins asks the server for alternate origins (e.g. its detected
+// public IP). The list is cached for the session once a non-empty result is
+// seen; empty results retry on the next call in case detection completes
+// later.
+async function fetchKnownOrigins() {
+  if (Array.isArray(cachedKnownOrigins) && cachedKnownOrigins.length > 0) return cachedKnownOrigins;
+  try {
+    const res = await fetch("/api/origins");
+    if (!res.ok) return cachedKnownOrigins || [];
+    const data = await res.json();
+    const origins = Array.isArray(data.origins) ? data.origins : [];
+    if (origins.length > 0) cachedKnownOrigins = origins;
+    return origins;
+  } catch {
+    return cachedKnownOrigins || [];
+  }
+}
+
 function shareOrigin() {
-  if (!["localhost", "127.0.0.1", "::1"].includes(location.hostname)) return location.origin;
-  const saved = localStorage.getItem("siguo.shareOrigin") || "";
-  const input = window.prompt("请输入可分享的服务器地址：云端80端口用 http://YOUR_VM_PUBLIC_IP，本机/LAN测试8080用 http://YOUR_LAN_IP:8080", saved || "http://");
-  if (!input) return "";
-  const origin = input.replace(/\/$/, "");
-  localStorage.setItem("siguo.shareOrigin", origin);
-  return origin;
+  // Always use the URL the host is browsing with. If the host is on
+  // localhost the resulting invite link won't help anyone else; the host
+  // is responsible for opening the page via a shareable address (LAN IP
+  // for non-docker, or the Caddy origin for cloud deploys). The
+  // /api/origins endpoint contributes any server-detected alternates.
+  return location.origin;
 }
 
 async function copyInviteLink(code) {
-  const url = inviteURL(code);
-  if (!url) {
+  const inviteName = window.prompt("给被邀请玩家取个名字（可留空，由系统分配）", "") || "";
+  const urls = await shareURLs("join", code, inviteName.trim() ? {name: inviteName.trim()} : null);
+  if (!urls.length) {
     log("未设置可分享的服务器地址");
     return;
   }
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(url);
-    log(`邀请链接已复制：${url}`);
-    return;
-  }
-  log(`邀请链接：${url}`);
+  presentShareLink("邀请链接", urls);
 }
 
 async function copyViewerLink(code) {
-  const url = viewerURL(code);
-  if (!url) {
+  const urls = await shareURLs("watch", code);
+  if (!urls.length) {
     log("未设置可分享的服务器地址");
     return;
   }
+  presentShareLink("观战链接", urls);
+}
+
+function shareLinkOfferText(offer) {
+  if (!offer || !offer.urls.length) return "";
+  if (offer.urls.length === 1) return offer.urls[0];
+  return `主链接：${offer.urls[0]}\n备用：${offer.urls.slice(1).join("\n备用：")}`;
+}
+
+async function presentShareLink(label, urls) {
+  state.shareLinkOffer = {label, urls};
+  render();
+  // Best-effort silent clipboard write — the banner is the source of truth.
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(url);
-    log(`观战链接已复制：${url}`);
-    return;
+    try {
+      await navigator.clipboard.writeText(shareLinkOfferText(state.shareLinkOffer));
+      log(`${label}已显示并复制到剪贴板`);
+      return;
+    } catch {}
   }
-  log(`观战链接：${url}`);
+  log(`${label}已显示，请手动复制`);
 }
 
 function setMode(mode) {
@@ -2194,6 +2337,7 @@ function esc(s) {
 }
 
 render();
+fetchKnownOrigins();
 setInterval(tickTimer, 200);
 setInterval(checkSocketHealth, socketWatchdogIntervalMs);
 let lastVisibilityReconnectAt = 0;
