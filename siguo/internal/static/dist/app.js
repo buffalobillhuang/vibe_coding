@@ -198,7 +198,8 @@ const state = {
   lastSocketMessageAt: 0,
   socketGeneration: 0,
   socketOpenedAt: 0,
-  reconnectInFlight: false
+  reconnectInFlight: false,
+  joinInFlight: false
 };
 
 const reconnectDelaysMs = [1000, 2000, 5000, 10000];
@@ -338,7 +339,7 @@ async function reconnectViaJoin() {
     forceReconnect(true);
     return;
   }
-  if (state.reconnectInFlight) {
+  if (state.reconnectInFlight || state.joinInFlight) {
     log("正在重连中，请稍候");
     return;
   }
@@ -1562,12 +1563,22 @@ function leaveEndedRoom(shouldRender = true) {
 }
 
 async function joinRoom() {
+  if (state.joinInFlight || state.reconnectInFlight) {
+    log("正在加入中，请稍候");
+    return;
+  }
   state.name = document.querySelector("#name").value.trim();
   const code = document.querySelector("#code").value.toUpperCase();
+  if (!code) return;
   const sessionToken = sessionTokenForRoom(code);
   state.code = code;
-  const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken})});
-  await acceptJoin(res);
+  state.joinInFlight = true;
+  try {
+    const res = await fetch(`/api/rooms/${code}/join`, {method:"POST", body: JSON.stringify({name: state.name, sessionToken})});
+    await acceptJoin(res);
+  } finally {
+    state.joinInFlight = false;
+  }
 }
 
 function sessionTokenForRoom(code) {
@@ -1705,6 +1716,13 @@ function defaultViewerName(room, preferredName) {
 
 function openSocket(viewer, isReconnect = false) {
   clearReconnectTimer();
+  // iOS WebKit accumulates CLOSING sockets and limits concurrent handshakes
+  // per host. If we have a fresh handshake in-flight, don't close it and
+  // start another — the in-flight one will resolve on its own.
+  if (state.ws && state.ws.readyState === WebSocket.CONNECTING &&
+      state.socketOpenedAt && Date.now() - state.socketOpenedAt < forceReconnectInflightGraceMs) {
+    return;
+  }
   if (state.ws) {
     state.ws.onclose = null;
     state.ws.close();
