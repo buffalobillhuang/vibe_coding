@@ -339,7 +339,11 @@ async function reconnectViaJoin() {
     forceReconnect(true);
     return;
   }
-  if (state.reconnectInFlight || state.joinInFlight) {
+  if (state.reconnectInFlight) {
+    log("正在重连中，请稍候");
+    return;
+  }
+  if (state.joinInFlight) {
     log("正在重连中，请稍候");
     return;
   }
@@ -1967,7 +1971,7 @@ function handleMarkerClick(pieceId, owner) {
   const marker = state.selectedMarker;
   if (!marker) return false;
   if (!pieceId) {
-    log("请选择要标记的对方棋子");
+    log("请选择要标记的其他玩家棋子");
     return true;
   }
   if (marker === "unmark") {
@@ -1980,8 +1984,8 @@ function handleMarkerClick(pieceId, owner) {
     }
     return true;
   }
-  if (sameSide(owner, state.seat)) {
-    log("只能标记对方棋子");
+  if (owner === state.seat) {
+    log("不能标记自己的棋子");
     return true;
   }
   state.pieceMarks[pieceId] = marker;

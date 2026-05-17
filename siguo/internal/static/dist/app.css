@@ -1724,6 +1724,21 @@ input {
   box-shadow: 0 0 0 1px rgba(255, 248, 230, .16);
 }
 
+@media (max-width: 760px) {
+  .marker-picker {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    transform: translateX(-50%);
+    width: min(92vw, 312px);
+    max-width: calc(100vw - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px;
+  }
+}
+
 .player-ticker.ticker-rel-0 { left: 68.2352941176%; bottom: 0; }
 .player-ticker.ticker-rel-2 { left: 0; top: 0; }
 .player-ticker.ticker-rel-3 {

@@ -50,6 +50,9 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 		".piece-mark {\n  position: absolute;",
 		".marker-picker {\n  position: absolute;",
 		".marker-choice:hover,\n.marker-choice.on {",
+		"@media (max-width: 760px) {\n  .marker-picker {\n    position: fixed;",
+		"bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);",
+		"flex-wrap: wrap;",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("piece marker UI styling missing %q", want)
@@ -66,6 +69,8 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 		`const pieceMarkerActions = [...pieceMarkerValues, "unmark"];`,
 		`${label}${pieceMarkHTML(marker)}`,
 		`if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;`,
+		`if (owner === state.seat) {`,
+		`log("不能标记自己的棋子");`,
 		`if (!alive.has(id)) delete state.pieceMarks[id];`,
 	} {
 		if !strings.Contains(js, want) {
