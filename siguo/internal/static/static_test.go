@@ -50,9 +50,14 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 		".piece-mark {\n  position: absolute;",
 		".marker-picker {\n  position: absolute;",
 		".marker-choice:hover,\n.marker-choice.on {",
-		"@media (max-width: 760px) {\n  .marker-picker {\n    position: fixed;",
-		"bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);",
-		"flex-wrap: wrap;",
+		"@media (max-width: 760px) {\n  .player-ticker.has-marker-picker {\n    height: auto;",
+		".player-ticker.has-marker-picker .marker-picker {\n    position: static;",
+		"overflow-x: auto;",
+		".player-ticker.has-marker-picker .marker-choice {\n    flex: 0 0 auto;",
+		".board-stage:not(.board-stage-junqi) {\n    padding-bottom: 86px;",
+		".board-siguo .player-ticker.ticker-rel-0.has-marker-picker {\n    bottom: -80px;",
+		".board-siguo .player-ticker.has-marker-picker .marker-picker {\n    position: absolute;",
+		"bottom: calc(100% + 6px);",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("piece marker UI styling missing %q", want)
@@ -68,6 +73,8 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 		`const pieceMarkerValues = ["?", "+", "++", "+++", "!", "!!", "!!!"];`,
 		`const pieceMarkerActions = [...pieceMarkerValues, "unmark"];`,
 		`${label}${pieceMarkHTML(marker)}`,
+		`const markerPicker = markerPickerHTML(seat, isElim);`,
+		`${markerPicker ? "has-marker-picker" : ""}`,
 		`if (state.selectedMarker && handleMarkerClick(pieceId, owner)) return;`,
 		`if (owner === state.seat) {`,
 		`log("不能标记自己的棋子");`,

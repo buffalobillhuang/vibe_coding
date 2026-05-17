@@ -1725,17 +1725,67 @@ input {
 }
 
 @media (max-width: 760px) {
-  .marker-picker {
-    position: fixed;
-    left: 50%;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-    transform: translateX(-50%);
-    width: min(92vw, 312px);
-    max-width: calc(100vw - 16px);
-    flex-wrap: wrap;
-    justify-content: center;
+  .player-ticker.has-marker-picker {
+    height: auto;
+    min-height: 72px;
+    align-content: start;
+  }
+  .player-ticker.has-marker-picker .marker-picker {
+    position: static;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    width: calc(100% - 2px);
+    max-width: none;
+    margin: 0 auto 2px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     gap: 4px;
-    padding: 5px;
+    padding: 4px;
+  }
+  .player-ticker.has-marker-picker .marker-picker::-webkit-scrollbar {
+    display: none;
+  }
+  .player-ticker.has-marker-picker .marker-choice {
+    flex: 0 0 auto;
+    min-width: 22px;
+    min-height: 20px;
+    font-size: 10px;
+  }
+  .board-stage:not(.board-stage-junqi) {
+    padding-bottom: 86px;
+  }
+  .board-siguo .player-ticker.has-marker-picker {
+    height: 11.7647058824%;
+    min-height: 0;
+    align-content: normal;
+  }
+  .board-siguo .player-ticker.ticker-rel-0.has-marker-picker {
+    bottom: -80px;
+  }
+  .board-siguo .player-ticker.has-marker-picker .marker-picker {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(92vw, 320px);
+    margin: 0;
+    justify-content: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 4px;
+    padding: 4px;
+  }
+  .board-siguo .player-ticker.has-marker-picker .marker-picker::-webkit-scrollbar {
+    display: none;
   }
 }
 

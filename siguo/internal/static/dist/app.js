@@ -1002,8 +1002,9 @@ function playerTickersHTML() {
     const canRequest = !state.viewer && isJunqi && phase === "playing" && seat === state.seat && !isElim && !reqPending;
     const canSkip = !state.viewer && isJunqi && phase === "playing" && seat === state.seat && seat === turn && used < maxSkips && !isElim && !reqPending;
     const orient = `ticker-rel-${relativeSeat(seat)}`;
-    return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""}" data-seat="${seat}">
-      ${markerPickerHTML(seat, isElim)}
+    const markerPicker = markerPickerHTML(seat, isElim);
+    return `<div class="player-ticker ${orient} ${active ? "active" : ""} ${isElim ? "elim" : ""} ${markerPicker ? "has-marker-picker" : ""}" data-seat="${seat}">
+      ${markerPicker}
       <div class="ticker-head">
         <span class="ticker-seat">${seatNames[seat]}</span>
         <span class="ticker-turn-logo" aria-label="行动方"></span>
