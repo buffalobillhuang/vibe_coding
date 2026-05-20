@@ -1757,7 +1757,14 @@ input {
     font-size: 10px;
   }
   .board-stage:not(.board-stage-junqi) {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(26px, 9vw, 42px);
     padding-bottom: 86px;
+  }
+  .board-stage:not(.board-stage-junqi) .board-siguo {
+    width: min(82vh, calc(100vw - clamp(52px, 18vw, 84px)));
   }
   .board-siguo .player-ticker.has-marker-picker {
     height: 11.7647058824%;

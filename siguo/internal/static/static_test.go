@@ -54,7 +54,8 @@ func TestHiddenPieceBacksUseMarkersWithoutEllipse(t *testing.T) {
 		".player-ticker.has-marker-picker .marker-picker {\n    position: static;",
 		"overflow-x: auto;",
 		".player-ticker.has-marker-picker .marker-choice {\n    flex: 0 0 auto;",
-		".board-stage:not(.board-stage-junqi) {\n    padding-bottom: 86px;",
+		".board-stage:not(.board-stage-junqi) {\n    box-sizing: border-box;\n    width: 100%;\n    max-width: none;\n    padding-inline: clamp(26px, 9vw, 42px);\n    padding-bottom: 86px;",
+		".board-stage:not(.board-stage-junqi) .board-siguo {\n    width: min(82vh, calc(100vw - clamp(52px, 18vw, 84px)));",
 		".board-siguo .player-ticker.ticker-rel-0.has-marker-picker {\n    bottom: -80px;",
 		".board-siguo .player-ticker.has-marker-picker .marker-picker {\n    position: absolute;",
 		"bottom: calc(100% + 6px);",
@@ -767,12 +768,57 @@ func TestJoinPathsOnlyReuseSessionTokensForSameRoom(t *testing.T) {
 		`function sessionTokenForRoom(code) {`,
 		`const savedCode = String(localStorage.getItem("siguo.code") || "").toUpperCase();`,
 		`return state.token && savedCode === normalizedCode ? state.token : "";`,
+		`function isCurrentPlayerRoom(code) {`,
+		`if (isCurrentPlayerRoom(code)) {`,
+		`log("已在房间 " + code);`,
+		`await reconnectViaJoin();`,
 		`const sessionToken = sessionTokenForRoom(code);`,
 		`body: JSON.stringify({name: state.name, sessionToken})`,
 		`const sessionToken = sessionTokenForRoom(offer.code);`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("join and rejoin flows must only reuse a saved session token for the same room; missing %q", want)
+		}
+	}
+}
+
+func TestCreateRoomConfirmsBeforeLeavingActiveGame(t *testing.T) {
+	data, err := FS.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.js) error = %v", err)
+	}
+	js := string(data)
+	for _, want := range []string{
+		`function activePlayerRoomCode() {`,
+		`const activeCode = activePlayerRoomCode();`,
+		`const message = "你已经在房间 " + activeCode + " 中。确认离开当前对局并创建新房间吗？";`,
+		`if (typeof window !== "undefined" && window.confirm && !window.confirm(message)) return;`,
+		`const res = await fetch("/api/rooms", {method:"POST", body: JSON.stringify({name: state.name, mode: currentMode()})});`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("create room flow must confirm before leaving an active room; missing %q", want)
+		}
+	}
+}
+
+func TestMobileSiguoBoardKeepsSideTickersInsidePhoneViewport(t *testing.T) {
+	data, err := FS.ReadFile("dist/app.css")
+	if err != nil {
+		t.Fatalf("ReadFile(dist/app.css) error = %v", err)
+	}
+	css := string(data)
+	for _, want := range []string{
+		`.board-stage:not(.board-stage-junqi) {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(26px, 9vw, 42px);
+    padding-bottom: 86px;`,
+		`.board-stage:not(.board-stage-junqi) .board-siguo {
+    width: min(82vh, calc(100vw - clamp(52px, 18vw, 84px)));`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("mobile 2:2 board should reserve side gutters so neighbor tickers stay visible; missing %q", want)
 		}
 	}
 }

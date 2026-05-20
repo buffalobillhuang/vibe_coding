@@ -1389,8 +1389,24 @@ function confirmAction(message, fn) {
   fn();
 }
 
+function activePlayerRoomCode() {
+  if (state.viewer || !state.token || !state.room) return "";
+  if (!["lobby", "setup", "playing"].includes(state.room.phase)) return "";
+  return String(state.code || "").toUpperCase();
+}
+
+function isCurrentPlayerRoom(code) {
+  const normalizedCode = String(code || "").toUpperCase();
+  return !!normalizedCode && activePlayerRoomCode() === normalizedCode;
+}
+
 async function createRoom() {
   state.name = document.querySelector("#name").value.trim();
+  const activeCode = activePlayerRoomCode();
+  if (activeCode) {
+    const message = "你已经在房间 " + activeCode + " 中。确认离开当前对局并创建新房间吗？";
+    if (typeof window !== "undefined" && window.confirm && !window.confirm(message)) return;
+  }
   const res = await fetch("/api/rooms", {method:"POST", body: JSON.stringify({name: state.name, mode: currentMode()})});
   await acceptJoin(res);
 }
@@ -1574,6 +1590,14 @@ async function joinRoom() {
   state.name = document.querySelector("#name").value.trim();
   const code = document.querySelector("#code").value.toUpperCase();
   if (!code) return;
+  if (isCurrentPlayerRoom(code)) {
+    if (socketLooksStale() || !connectionReady()) {
+      await reconnectViaJoin();
+    } else {
+      log("已在房间 " + code);
+    }
+    return;
+  }
   const sessionToken = sessionTokenForRoom(code);
   state.code = code;
   state.joinInFlight = true;
